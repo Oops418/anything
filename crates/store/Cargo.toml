@@ -3,4 +3,20 @@ name = "store"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+name = "store"
+path = "src/lib.rs"
+
+[[bin]]
+name = "store"
+path = "src/main.rs"
+
 [dependencies]
+anyhow = "1"
+directories = "5"
+duckdb = { version = "1", features = ["bundled"] }
+futures = "0.3"
+jwalk = "0.8"
+serde = { version = "1", features = ["derive"] }
+tarpc = { version = "0.37", features = ["tokio1"] }
+tokio = { version = "1", features = ["full"] }
