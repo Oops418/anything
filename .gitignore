@@ -12,3 +12,7 @@ build/
 
 # VS Code
 .vscode/
+
+## Xcode User settings
+**/xcuserdata
+
