@@ -1,10 +1,3 @@
-//
-//  anythingApp.swift
-//  anything
-//
-//  Created by kxyang on 4/2/26.
-//
-
 import SwiftUI
 
 @main
@@ -13,5 +6,7 @@ struct anythingApp: App {
         WindowGroup {
             ContentView()
         }
+        .windowStyle(.hiddenTitleBar)
+        .defaultSize(width: 920, height: 620)
     }
 }
