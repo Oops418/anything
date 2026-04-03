@@ -1,0 +1,36 @@
+syntax = "proto3";
+package store.v1;
+
+import "google/protobuf/timestamp.proto";
+
+service StoreService {
+  rpc querydb(QueryRequest) returns (QueryResponse);
+}
+
+enum MethodEnum {
+  UNSPECIFIED = 0;
+  DEFAULT = 1;
+  FD = 2;
+  FZF = 3;
+}
+
+message QueryRequest {
+  MethodEnum method = 1;
+  string pattern = 2;
+  google.protobuf.Timestamp timestamp = 3;
+}
+
+message FileInfo {
+  string name = 1;
+  string path = 2;
+  int64 size = 3;
+  google.protobuf.Timestamp modified = 4;
+}
+
+message QueryResponse {
+  string id = 1;
+  string name = 2;
+  double price = 3;
+  google.protobuf.Timestamp timestamp = 4;
+  repeated FileInfo files = 5;
+}

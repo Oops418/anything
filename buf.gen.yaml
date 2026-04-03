@@ -1,0 +1,25 @@
+version: v2
+plugins:
+  - local: protoc-gen-buffa
+    out: proto/generated/rust/buffa
+    opt: [views=true, json=true]
+  - local: protoc-gen-buffa-packaging
+    out: proto/generated/rust/buffa
+    strategy: all
+  - local: protoc-gen-connect-rust
+    out: proto/generated/rust/connect
+    opt: [buffa_module=crate::proto]
+  - local: protoc-gen-buffa-packaging
+    out: proto/generated/rust/connect
+    strategy: all
+    opt: [filter=services]
+
+  - remote: buf.build/apple/swift
+    out: proto/generated/swift
+    opt: Visibility=Public
+  - remote: buf.build/connectrpc/swift
+    out: proto/generated/swift
+    opt:
+      - GenerateAsyncMethods=true
+      - GenerateCallbackMethods=true
+      - Visibility=Public

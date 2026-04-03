@@ -13,6 +13,9 @@ build/
 # VS Code
 .vscode/
 
-## Xcode User settings
+# Xcode User settings
 **/xcuserdata
+
+# Buf
+**/generated
 
