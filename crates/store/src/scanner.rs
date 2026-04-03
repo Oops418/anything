@@ -1,7 +1,7 @@
 use anyhow::Result;
 use jwalk::WalkDir;
 use std::path::{Path, PathBuf};
-use std::sync::{mpsc::SyncSender, Arc};
+use std::sync::{Arc, mpsc::SyncSender};
 use std::time::UNIX_EPOCH;
 
 use crate::types::FileEntry;
@@ -70,7 +70,11 @@ pub fn scan_directory(root: &Path, exclude: &[PathBuf]) -> Result<Vec<FileEntry>
 
 /// Walk `root` and send each `FileEntry` through `tx` as it is discovered.
 /// Returns the number of entries sent.  Stops early if the receiver is dropped.
-pub fn scan_to_sender(root: &Path, exclude: &[PathBuf], tx: &SyncSender<FileEntry>) -> Result<usize> {
+pub fn scan_to_sender(
+    root: &Path,
+    exclude: &[PathBuf],
+    tx: &SyncSender<FileEntry>,
+) -> Result<usize> {
     let exclude = Arc::new(exclude.to_vec());
 
     let walker = WalkDir::new(root).process_read_dir(move |_, _, _, children| {

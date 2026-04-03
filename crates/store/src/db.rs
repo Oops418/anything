@@ -1,5 +1,5 @@
 use anyhow::Result;
-use duckdb::{params, Connection};
+use duckdb::{Connection, params};
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -164,9 +164,7 @@ impl Database {
     }
 
     pub fn is_indexed(&self) -> Result<bool> {
-        let mut stmt = self
-            .conn
-            .prepare("SELECT indexed FROM config LIMIT 1")?;
+        let mut stmt = self.conn.prepare("SELECT indexed FROM config LIMIT 1")?;
         let mut rows = stmt.query([])?;
         Ok(rows
             .next()?
@@ -175,8 +173,7 @@ impl Database {
     }
 
     pub fn mark_indexed(&self) -> Result<()> {
-        self.conn
-            .execute("UPDATE config SET indexed = true", [])?;
+        self.conn.execute("UPDATE config SET indexed = true", [])?;
         Ok(())
     }
 }

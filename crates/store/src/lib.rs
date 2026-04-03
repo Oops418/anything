@@ -1,8 +1,10 @@
 pub mod db;
+pub mod proto;
 pub mod scanner;
 pub mod service;
 pub mod types;
 
+pub use proto::store::v1::{FileInfo, MethodEnum, QueryRequest, QueryResponse};
 pub use service::{StoreClients, StoreServiceClient};
 
 use std::io::Write as _;
@@ -15,7 +17,7 @@ use tokio::sync::Mutex;
 
 use db::Database;
 use scanner::scan_to_sender;
-use service::{spawn_server, StoreServer};
+use service::{StoreServer, socket_path, spawn_server};
 
 /// Returns (and creates) the platform-appropriate app data directory.
 ///
@@ -45,8 +47,8 @@ fn expand_tilde(s: &str) -> PathBuf {
 }
 
 /// Scan `monitored_paths` (default: `/`), skip paths listed in the config
-/// `exclude` field, populate DuckDB, then spawn the in-process RPC server.
-/// Returns client handles for the UI and monitor crates.
+/// `exclude` field, populate DuckDB, then spawn the UDS-backed ConnectRPC
+/// server. Returns client handles for the UI and monitor crates.
 pub async fn start(monitored_paths: Vec<PathBuf>) -> Result<StoreClients> {
     let db_path = data_dir()?.join("store.db");
     println!("[store] database at {}", db_path.display());
@@ -140,7 +142,9 @@ pub async fn start(monitored_paths: Vec<PathBuf>) -> Result<StoreClients> {
     }
 
     // ── spawn server tasks and return client handles ──────────────────────────
-    Ok(spawn_server(StoreServer::new(db)))
+    let socket_path = socket_path()?;
+    println!("[store] rpc socket at {}", socket_path.display());
+    spawn_server(StoreServer::new(db), socket_path).await
 }
 
 /// Write one CSV row. Fields containing `"`, `,`, or newlines are quoted.

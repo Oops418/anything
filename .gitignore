@@ -17,5 +17,4 @@ build/
 **/xcuserdata
 
 # Buf
-**/generated
-
+proto/generated/*

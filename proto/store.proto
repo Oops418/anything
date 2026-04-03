@@ -4,7 +4,7 @@ package store.v1;
 import "google/protobuf/timestamp.proto";
 
 service StoreService {
-  rpc querydb(QueryRequest) returns (QueryResponse);
+  rpc querydb(QueryRequest) returns (stream QueryResponse);
 }
 
 enum MethodEnum {

@@ -13,10 +13,17 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = "1"
+buffa = { version = "0.3", features = ["json"] }
+buffa-types = { version = "0.3", features = ["json"] }
+connectrpc = { version = "0.3.1", features = ["client", "server"] }
 directories = "5"
 duckdb = { version = "1", features = ["bundled"] }
 futures = "0.3"
+http = "1"
+http-body = "1"
 jwalk = "0.8"
+hyper = { version = "1", features = ["http1", "http2", "server"] }
+hyper-util = { version = "0.1", features = ["http1", "http2", "server", "tokio"] }
 serde = { version = "1", features = ["derive"] }
-tarpc = { version = "0.37", features = ["tokio1"] }
 tokio = { version = "1", features = ["full"] }
+tower = "0.5"
