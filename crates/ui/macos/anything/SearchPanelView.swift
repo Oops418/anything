@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 @preconcurrency import QuickLookUI
+import GeneratedStore
 
 private let tableResizeAnimation = Animation.interactiveSpring(
     response: 0.24,
@@ -104,9 +105,14 @@ struct SearchPanelView: View {
     @State private var results    = [FileItem]()
     @State private var hasSearched  = false
     @State private var isLoading    = false
+    @State private var errorMessage: String? = nil
     @State private var selectedId: String? = nil
     @State private var searchTask: Task<Void, Never>? = nil
     @State private var activeArea: SearchPanelFocusArea = .search
+    @State private var sortOrder = [
+        KeyPathComparator(\FileItem.sortName)
+    ]
+    @StateObject private var searchService = StoreSearchService()
     @FocusState private var isSearchFieldFocused: Bool
 
     var body: some View {
@@ -159,7 +165,7 @@ struct SearchPanelView: View {
                 .font(.system(size: 12))
                 .foregroundColor(.white)
                 .focused($isSearchFieldFocused)
-                .onChange(of: query) { _ in scheduleSearch() }
+                .onChange(of: query) { scheduleSearch() }
 
             if isLoading {
                 ProgressView()
@@ -207,12 +213,14 @@ struct SearchPanelView: View {
     private var resultsBody: some View {
         if !hasSearched {
             idleState
+        } else if !results.isEmpty {
+            resultsState
+        } else if let errorMessage {
+            errorState(errorMessage)
         } else if isLoading {
             Spacer()
         } else if results.isEmpty {
             emptyState
-        } else {
-            resultsState
         }
     }
 
@@ -231,10 +239,27 @@ struct SearchPanelView: View {
                 Text("Start typing to query your files")
                     .font(.system(size: 12))
                     .foregroundColor(.white.opacity(0.5))
-                Text("\(mockFiles.count) files ready to search")
+                Text("Live ConnectRPC search over Unix socket")
                     .font(.system(size: 10))
                     .foregroundColor(.white.opacity(0.25))
             }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.bottom, 24)
+    }
+
+    private func errorState(_ message: String) -> some View {
+        VStack(spacing: 10) {
+            Text("⚠️").font(.system(size: 34))
+            Text("Search request failed")
+                .font(.system(size: 11.5))
+                .foregroundColor(.white.opacity(0.72))
+            Text(message)
+                .font(.system(size: 10))
+                .foregroundColor(.white.opacity(0.40))
+                .multilineTextAlignment(.center)
+                .lineLimit(3)
+                .frame(maxWidth: 340)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.bottom, 24)
@@ -252,60 +277,90 @@ struct SearchPanelView: View {
     }
 
     private var resultsState: some View {
-        GeometryReader { geo in
-            let metrics = SearchTableMetrics(availableWidth: geo.size.width)
-
-            VStack(spacing: 0) {
-                HStack {
-                    HStack(spacing: 3) {
-                        Text("\(results.count)")
-                            .foregroundColor(.white.opacity(0.75))
-                        Text(results.count == 1 ? "result" : "results")
-                            .foregroundColor(.white.opacity(0.5))
+        VStack(spacing: 0) {
+            HStack {
+                HStack(spacing: 3) {
+                    Text("\(results.count)")
+                        .foregroundColor(.white.opacity(0.75))
+                    Text(results.count == 1 ? "result" : "results")
+                        .foregroundColor(.white.opacity(0.5))
+                    Text("·")
+                        .foregroundColor(.white.opacity(0.25))
+                    Text("sortable columns")
+                        .foregroundColor(.white.opacity(0.4))
+                    if isLoading {
                         Text("·")
                             .foregroundColor(.white.opacity(0.25))
-                        Text("\(mockFiles.count) indexed")
-                            .foregroundColor(.white.opacity(0.4))
+                        Text("updating…")
+                            .foregroundColor(.white.opacity(0.45))
                     }
-                    .font(.system(size: 9.5))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                    .background(
-                        Capsule()
-                            .fill(Color.white.opacity(0.08))
-                            .overlay(Capsule()
-                                .stroke(Color.white.opacity(0.13), lineWidth: 1))
-                    )
-                    Spacer()
                 }
-                .frame(width: metrics.contentWidth, alignment: .leading)
-                .padding(.horizontal, SearchTableMetrics.tableInset)
-                .padding(.top, 10)
-                .padding(.bottom, 1)
-
-                columnHeaders(metrics: metrics)
-
-                ScrollView(.vertical, showsIndicators: false) {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(results) { file in
-                            FileRowView(
-                                file: file,
-                                isSelected: selectedId == file.id,
-                                metrics: metrics
-                            ) {
-                                selectResult(file.id)
-                            }
-                        }
-                    }
-                    .frame(width: metrics.contentWidth, alignment: .leading)
-                    .padding(.horizontal, SearchTableMetrics.tableInset)
-                    .padding(.vertical, 4)
-                }
+                .font(.system(size: 9.5))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(
+                    Capsule()
+                        .fill(Color.white.opacity(0.08))
+                        .overlay(Capsule()
+                            .stroke(Color.white.opacity(0.13), lineWidth: 1))
+                )
+                Spacer()
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .animation(tableResizeAnimation, value: metrics.contentWidth)
-            .animation(tableResizeAnimation, value: metrics.nameWidth)
-            .animation(tableResizeAnimation, value: metrics.pathWidth)
+            .padding(.horizontal, 16)
+            .padding(.top, 10)
+            .padding(.bottom, 8)
+
+            Table(results, selection: $selectedId, sortOrder: $sortOrder) {
+                TableColumn("Name", value: \.sortName) { file in
+                    HStack(spacing: 8) {
+                        Circle()
+                            .fill(file.kind.color)
+                            .frame(width: 6, height: 6)
+                        Text(file.emoji)
+                            .font(.system(size: 12))
+                            .frame(width: 18, alignment: .center)
+                        Text(file.displayName)
+                            .foregroundColor(.white.opacity(0.86))
+                            .lineLimit(1)
+                    }
+                    .font(.system(size: 11.5))
+                }
+                .width(min: 180, ideal: 260)
+
+                TableColumn("Path", value: \.sortPath) { file in
+                    Text(file.path)
+                        .font(.system(size: 10))
+                        .foregroundColor(.white.opacity(0.34))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                .width(min: 220, ideal: 420)
+
+                TableColumn("Size", value: \.sortSizeBytes) { file in
+                    Text(file.size)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundColor(.white.opacity(0.46))
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                }
+                .width(min: 92, ideal: 110, max: 150)
+
+                TableColumn("Modified", value: \.sortModifiedAt) { file in
+                    Text(file.modified)
+                        .font(.system(size: 9.5, design: .monospaced))
+                        .foregroundColor(.white.opacity(0.34))
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                }
+                .width(min: 120, ideal: 170, max: 220)
+            }
+            .scrollContentBackground(.hidden)
+            .background(Color.clear)
+            .alternatingRowBackgrounds(.disabled)
+            .onChange(of: sortOrder) { applySort() }
+            .onChange(of: selectedId) { handleSelectionChange() }
+            .onTapGesture {
+                activeArea = .results
+                isSearchFieldFocused = false
+            }
         }
     }
 
@@ -350,26 +405,40 @@ struct SearchPanelView: View {
 
     private func scheduleSearch() {
         searchTask?.cancel()
-        let q = query
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !q.trimmingCharacters(in: .whitespaces).isEmpty else {
-            results = []; hasSearched = false; isLoading = false; selectedId = nil
+            results = []; hasSearched = false; isLoading = false; selectedId = nil; errorMessage = nil
             return
         }
-        isLoading = true; hasSearched = true
+        isLoading = true; hasSearched = true; errorMessage = nil
         searchTask = Task {
             try? await Task.sleep(for: .milliseconds(260))   // debounce
             guard !Task.isCancelled else { return }
-            let latency = Int.random(in: 160...300)
-            try? await Task.sleep(for: .milliseconds(latency))
-            guard !Task.isCancelled else { return }
-            results   = queryFiles(q)
+            do {
+                selectedId = nil
+                results = []
+                errorMessage = nil
+
+                let responseStream = await searchService.searchStream(q)
+                for try await response in responseStream {
+                    guard !Task.isCancelled else { return }
+                    results.append(contentsOf: response.files.map(FileItem.init(proto:)))
+                    applySort()
+                }
+            } catch is CancellationError {
+                return
+            } catch {
+                guard !Task.isCancelled else { return }
+                selectedId = nil
+                errorMessage = searchService.lastErrorMessage ?? error.localizedDescription
+            }
             isLoading = false
         }
     }
 
     private func clearSearch() {
         searchTask?.cancel()
-        query = ""; results = []; hasSearched = false; isLoading = false; selectedId = nil
+        query = ""; results = []; hasSearched = false; isLoading = false; selectedId = nil; errorMessage = nil
         activeArea = .search
         PreviewCoordinator.shared.dismissPreview()
     }
@@ -400,6 +469,17 @@ struct SearchPanelView: View {
         isSearchFieldFocused = false
         NSApp.keyWindow?.makeFirstResponder(nil)
         selectedId = (selectedId == id) ? nil : id
+    }
+
+    private func applySort() {
+        results.sort(using: sortOrder)
+    }
+
+    private func handleSelectionChange() {
+        guard selectedId != nil else { return }
+        activeArea = .results
+        isSearchFieldFocused = false
+        NSApp.keyWindow?.makeFirstResponder(nil)
     }
 }
 

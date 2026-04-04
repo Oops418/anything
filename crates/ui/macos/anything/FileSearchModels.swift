@@ -1,4 +1,7 @@
 import SwiftUI
+import Foundation
+import GeneratedStore
+import SwiftProtobuf
 
 // MARK: - FileKind
 
@@ -36,7 +39,7 @@ enum FileKind: String, CaseIterable, Identifiable {
 
 // MARK: - FileItem
 
-struct FileItem: Identifiable {
+struct FileItem: Identifiable, Hashable {
     let id: String
     let name: String
     let ext: String
@@ -44,8 +47,36 @@ struct FileItem: Identifiable {
     let size: String
     let modified: String
     let kind: FileKind
+    let sizeBytes: Int64?
+    let modifiedAt: Date?
 
     var displayName: String { ext.isEmpty ? name : "\(name).\(ext)" }
+    var sortName: String { displayName.localizedLowercase }
+    var sortPath: String { path.localizedLowercase }
+    var sortSizeBytes: Int64 { sizeBytes ?? -1 }
+    var sortModifiedAt: Date { modifiedAt ?? .distantPast }
+
+    init(
+        id: String,
+        name: String,
+        ext: String,
+        path: String,
+        size: String,
+        modified: String,
+        kind: FileKind,
+        sizeBytes: Int64? = nil,
+        modifiedAt: Date? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.ext = ext
+        self.path = path
+        self.size = size
+        self.modified = modified
+        self.kind = kind
+        self.sizeBytes = sizeBytes
+        self.modifiedAt = modifiedAt
+    }
 
     var emoji: String {
         let map: [String: String] = [
@@ -68,6 +99,82 @@ struct FileItem: Identifiable {
             return candidateURL
         }
         return PreviewPlaceholderStore.shared.previewURL(for: self)
+    }
+}
+
+extension FileItem {
+    init(proto file: Store_V1_FileInfo) {
+        let fullPath = NSString(string: file.path).expandingTildeInPath
+        let fileURL = URL(fileURLWithPath: fullPath)
+        let fileExtension = fileURL.pathExtension.lowercased()
+        let fileName = fileURL.lastPathComponent
+        let baseName = fileExtension.isEmpty ? fileName : fileURL.deletingPathExtension().lastPathComponent
+        let displayPath = fileURL.deletingLastPathComponent().path
+
+        self.init(
+            id: file.path.isEmpty ? "\(fileName)-\(file.size)" : file.path,
+            name: baseName.isEmpty ? file.name : baseName,
+            ext: fileExtension,
+            path: displayPath,
+            size: Self.formattedSize(file.size),
+            modified: Self.formattedModified(file),
+            kind: .forFileExtension(fileExtension),
+            sizeBytes: file.size,
+            modifiedAt: Self.modifiedDate(file)
+        )
+    }
+
+    private static func formattedSize(_ rawBytes: Int64) -> String {
+        guard rawBytes > 0 else { return "—" }
+
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useBytes, .useKB, .useMB, .useGB, .useTB]
+        formatter.countStyle = .file
+        formatter.includesUnit = true
+        formatter.isAdaptive = true
+        return formatter.string(fromByteCount: rawBytes)
+    }
+
+    private static func formattedModified(_ file: Store_V1_FileInfo) -> String {
+        guard let date = modifiedDate(file) else { return "—" }
+
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        formatter.doesRelativeDateFormatting = true
+        return formatter.string(from: date)
+    }
+
+    private static func modifiedDate(_ file: Store_V1_FileInfo) -> Date? {
+        guard file.hasModified else { return nil }
+
+        let timestamp = file.modified
+        let seconds = TimeInterval(timestamp.seconds)
+        let nanos = TimeInterval(timestamp.nanos) / 1_000_000_000
+        return Date(timeIntervalSince1970: seconds + nanos)
+    }
+}
+
+private extension FileKind {
+    static func forFileExtension(_ ext: String) -> Self {
+        switch ext.lowercased() {
+        case "png", "jpg", "jpeg", "gif", "webp", "heic", "tiff", "svg":
+            .image
+        case "mp4", "mov", "avi", "mkv", "webm":
+            .video
+        case "mp3", "m4a", "wav", "flac", "aac":
+            .audio
+        case "swift", "rs", "go", "py", "js", "ts", "tsx", "jsx", "json", "yml", "yaml", "toml", "sql", "sh", "rb", "kt", "java", "c", "cc", "cpp", "h", "hpp":
+            .code
+        case "zip", "tar", "gz", "tgz", "bz2", "xz", "rar", "7z":
+            .archive
+        case "pdf":
+            .pdf
+        case "md", "txt", "rtf", "doc", "docx", "pages":
+            .doc
+        default:
+            .doc
+        }
     }
 }
 

@@ -6,6 +6,11 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		540F56D22F8039C8007A105B /* Connect in Frameworks */ = {isa = PBXBuildFile; productRef = 540F56D12F8039C8007A105B /* Connect */; };
+		540F56DA2F803D3C007A105B /* GeneratedStore in Frameworks */ = {isa = PBXBuildFile; productRef = 540F56D92F803D3C007A105B /* GeneratedStore */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		54EE3D1E2F7E8F5400BAF9AA /* anything.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = anything.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -23,6 +28,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				540F56DA2F803D3C007A105B /* GeneratedStore in Frameworks */,
+				540F56D22F8039C8007A105B /* Connect in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -65,6 +72,8 @@
 			);
 			name = anything;
 			packageProductDependencies = (
+				540F56D12F8039C8007A105B /* Connect */,
+				540F56D92F803D3C007A105B /* GeneratedStore */,
 			);
 			productName = anything;
 			productReference = 54EE3D1E2F7E8F5400BAF9AA /* anything.app */;
@@ -94,6 +103,10 @@
 			);
 			mainGroup = 54EE3D152F7E8F5400BAF9AA;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				540F56D02F8039C8007A105B /* XCRemoteSwiftPackageReference "connect-swift" */,
+				540F56D82F803D3C007A105B /* XCLocalSwiftPackageReference "../../../proto/generated/swift" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 54EE3D1F2F7E8F5400BAF9AA /* Products */;
 			projectDirPath = "";
@@ -251,9 +264,8 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				ENABLE_APP_SANDBOX = YES;
+				ENABLE_APP_SANDBOX = NO;
 				ENABLE_PREVIEWS = YES;
-				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -281,9 +293,8 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
-				ENABLE_APP_SANDBOX = YES;
+				ENABLE_APP_SANDBOX = NO;
 				ENABLE_PREVIEWS = YES;
-				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -325,6 +336,36 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		540F56D82F803D3C007A105B /* XCLocalSwiftPackageReference "../../../proto/generated/swift" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../../../proto/generated/swift;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		540F56D02F8039C8007A105B /* XCRemoteSwiftPackageReference "connect-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/connectrpc/connect-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.2.2;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		540F56D12F8039C8007A105B /* Connect */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 540F56D02F8039C8007A105B /* XCRemoteSwiftPackageReference "connect-swift" */;
+			productName = Connect;
+		};
+		540F56D92F803D3C007A105B /* GeneratedStore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = GeneratedStore;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 54EE3D162F7E8F5400BAF9AA /* Project object */;
 }
