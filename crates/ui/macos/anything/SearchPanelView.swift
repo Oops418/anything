@@ -414,23 +414,31 @@ struct SearchPanelView: View {
         searchTask = Task {
             try? await Task.sleep(for: .milliseconds(260))   // debounce
             guard !Task.isCancelled else { return }
-            do {
-                selectedId = nil
-                results = []
-                errorMessage = nil
 
-                let responseStream = await searchService.searchStream(q)
-                for try await response in responseStream {
+            selectedId = nil
+            results = []
+            errorMessage = nil
+
+            // Fresh processor per search — owns its own formatters and accumulation state.
+            // Its methods hop to a background executor, never blocking the main actor.
+            let processor = ChunkProcessor()
+            let currentSortOrder = sortOrder
+
+            do {
+                for try await chunk in searchService.search(q) {
                     guard !Task.isCancelled else { return }
-                    results.append(contentsOf: response.files.map(FileItem.init(proto:)))
-                    applySort()
+                    // Background: transform proto → FileItem, append to accumulator, sort
+                    let snapshot = await processor.process(chunk: chunk, sortOrder: currentSortOrder)
+                    guard !Task.isCancelled else { return }
+                    // Back on @MainActor — single array-reference swap, renders visible rows only
+                    results = snapshot
                 }
             } catch is CancellationError {
                 return
             } catch {
                 guard !Task.isCancelled else { return }
                 selectedId = nil
-                errorMessage = searchService.lastErrorMessage ?? error.localizedDescription
+                errorMessage = error.localizedDescription
             }
             isLoading = false
         }
@@ -603,6 +611,29 @@ struct FileRowView: View {
         .contentShape(Rectangle())
         .onTapGesture { onSelect() }
         .onHover { isHovered = $0 }
+    }
+}
+
+// MARK: - ChunkProcessor
+
+/// Background actor that owns a single pair of formatters and an accumulation buffer.
+/// Called once per server chunk (≤ 256 files); transforms proto → FileItem, appends,
+/// sorts, and returns a value-copy snapshot for the main actor to display.
+private actor ChunkProcessor {
+    private let sizeFormatter = FileItem.makeSizeFormatter()
+    private let dateFormatter = FileItem.makeDateFormatter()
+    private var accumulated: [FileItem] = []
+
+    func process(
+        chunk: Store_V1_QueryResponse,
+        sortOrder: [KeyPathComparator<FileItem>]
+    ) -> [FileItem] {
+        let newItems = chunk.files.map {
+            FileItem(proto: $0, sizeFormatter: sizeFormatter, dateFormatter: dateFormatter)
+        }
+        accumulated.append(contentsOf: newItems)
+        accumulated.sort(using: sortOrder)
+        return accumulated   // COW copy — caller gets its own snapshot
     }
 }
 

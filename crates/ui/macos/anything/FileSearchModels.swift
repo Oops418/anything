@@ -103,7 +103,19 @@ struct FileItem: Identifiable, Hashable {
 }
 
 extension FileItem {
+    /// Convenience single-item init — creates formatters each call.
+    /// Use ``init(proto:sizeFormatter:dateFormatter:)`` when converting many items at once.
     init(proto file: Store_V1_FileInfo) {
+        self.init(
+            proto: file,
+            sizeFormatter: Self.makeSizeFormatter(),
+            dateFormatter: Self.makeDateFormatter()
+        )
+    }
+
+    /// Batch init — pass pre-created formatters to amortise their initialisation cost
+    /// across all items in a search result set.
+    init(proto file: Store_V1_FileInfo, sizeFormatter: ByteCountFormatter, dateFormatter: DateFormatter) {
         let fullPath = NSString(string: file.path).expandingTildeInPath
         let fileURL = URL(fileURLWithPath: fullPath)
         let fileExtension = fileURL.pathExtension.lowercased()
@@ -116,32 +128,38 @@ extension FileItem {
             name: baseName.isEmpty ? file.name : baseName,
             ext: fileExtension,
             path: displayPath,
-            size: Self.formattedSize(file.size),
-            modified: Self.formattedModified(file),
+            size: Self.formattedSize(file.size, using: sizeFormatter),
+            modified: Self.formattedModified(file, using: dateFormatter),
             kind: .forFileExtension(fileExtension),
             sizeBytes: file.size,
             modifiedAt: Self.modifiedDate(file)
         )
     }
 
-    private static func formattedSize(_ rawBytes: Int64) -> String {
-        guard rawBytes > 0 else { return "—" }
+    static func makeSizeFormatter() -> ByteCountFormatter {
+        let f = ByteCountFormatter()
+        f.allowedUnits = [.useBytes, .useKB, .useMB, .useGB, .useTB]
+        f.countStyle = .file
+        f.includesUnit = true
+        f.isAdaptive = true
+        return f
+    }
 
-        let formatter = ByteCountFormatter()
-        formatter.allowedUnits = [.useBytes, .useKB, .useMB, .useGB, .useTB]
-        formatter.countStyle = .file
-        formatter.includesUnit = true
-        formatter.isAdaptive = true
+    static func makeDateFormatter() -> DateFormatter {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        f.timeStyle = .short
+        f.doesRelativeDateFormatting = true
+        return f
+    }
+
+    private static func formattedSize(_ rawBytes: Int64, using formatter: ByteCountFormatter) -> String {
+        guard rawBytes > 0 else { return "—" }
         return formatter.string(fromByteCount: rawBytes)
     }
 
-    private static func formattedModified(_ file: Store_V1_FileInfo) -> String {
+    private static func formattedModified(_ file: Store_V1_FileInfo, using formatter: DateFormatter) -> String {
         guard let date = modifiedDate(file) else { return "—" }
-
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .short
-        formatter.doesRelativeDateFormatting = true
         return formatter.string(from: date)
     }
 

@@ -474,6 +474,20 @@ fn format_duration(duration: Duration) -> String {
 
 fn is_benign_connection_error(err: &(dyn std::error::Error + 'static)) -> bool {
     err.downcast_ref::<hyper::Error>()
-        .is_some_and(hyper::Error::is_shutdown)
+        .is_some_and(|err| err.is_shutdown() || err.is_body_write_aborted())
+        || err
+            .downcast_ref::<std::io::Error>()
+            .is_some_and(is_benign_io_error)
         || err.source().is_some_and(is_benign_connection_error)
+}
+
+fn is_benign_io_error(err: &std::io::Error) -> bool {
+    matches!(
+        err.kind(),
+        std::io::ErrorKind::BrokenPipe
+            | std::io::ErrorKind::ConnectionAborted
+            | std::io::ErrorKind::ConnectionReset
+            | std::io::ErrorKind::NotConnected
+            | std::io::ErrorKind::UnexpectedEof
+    )
 }
