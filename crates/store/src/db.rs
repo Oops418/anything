@@ -192,7 +192,7 @@ impl Database {
     pub fn is_indexed(&self) -> Result<bool> {
         let mut stmt = self
             .conn
-            .prepare("SELECT indexing FROM config LIMIT 1")?;
+            .prepare("SELECT last_indexed IS NOT NULL FROM config LIMIT 1")?;
         let mut rows = stmt.query([])?;
         Ok(rows
             .next()?

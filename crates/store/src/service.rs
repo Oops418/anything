@@ -107,6 +107,10 @@ impl StoreService for StoreServer {
         let db = self.db.lock().await;
         let db_lock_wait = lock_wait_started.elapsed();
 
+        if db.is_indexing().unwrap_or(false) {
+            return Err(ConnectError::failed_precondition("indexing in progress"));
+        }
+
         let query_started = Instant::now();
         let files = match db.query_files(req.pattern) {
             Ok(files) => files,
