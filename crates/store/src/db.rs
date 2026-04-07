@@ -3,7 +3,7 @@ use duckdb::{Connection, params};
 use std::path::Path;
 use std::path::PathBuf;
 
-use crate::types::FileEntry;
+use crate::types::{ConfigRow, FileEntry};
 
 pub struct Database {
     conn: Connection,
@@ -22,10 +22,12 @@ impl Database {
         // files:  indexed file metadata, path is the natural key.
         self.conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS config (
-                version   TEXT    NOT NULL,
-                exclude   TEXT,
-                indexed   BOOLEAN DEFAULT FALSE,
-                monitored BOOLEAN DEFAULT FALSE
+                version      TEXT    NOT NULL,
+                exclude      TEXT,
+                last_indexed TIMESTAMP,
+                total_files  BIGINT  DEFAULT 0,
+                indexing     BOOLEAN DEFAULT FALSE,
+                monitoring   BOOLEAN DEFAULT FALSE
             );
 
             CREATE TABLE IF NOT EXISTS files (
@@ -34,12 +36,14 @@ impl Database {
                 size        BIGINT,
                 create_time TEXT,
                 change_time TEXT
-            );
-
-            INSERT INTO config (version, exclude, indexed, monitored)
-            SELECT '1.0.0', '~/Library/Caches
-/Library/Caches', false, false
-            WHERE NOT EXISTS (SELECT 1 FROM config LIMIT 1);",
+            );",
+        )?;
+        self.conn.execute(
+            "INSERT INTO config (version, exclude, last_indexed, total_files, indexing, monitoring)
+             SELECT ?, '~/Library/Caches
+/Library/Caches', NULL, 0, false, false
+             WHERE NOT EXISTS (SELECT 1 FROM config LIMIT 1)",
+            params![env!("CARGO_PKG_VERSION")],
         )?;
         Ok(())
     }
@@ -125,16 +129,16 @@ impl Database {
         Ok(())
     }
 
-    /// Full-text search on name and path using a LIKE pattern.
+    /// Search files by name using a LIKE pattern.
     pub fn query_files(&self, pattern: &str) -> Result<Vec<FileEntry>> {
         let like = format!("%{pattern}%");
         let mut stmt = self.conn.prepare(
             "SELECT name, path, size, create_time, change_time
              FROM files
-             WHERE path LIKE ? OR name LIKE ?
+             WHERE name LIKE ?
              ORDER BY path",
         )?;
-        let rows = stmt.query_map(params![like.as_str(), like.as_str()], |row| {
+        let rows = stmt.query_map(params![like.as_str()], |row| {
             Ok(FileEntry {
                 name: row.get(0)?,
                 path: row.get(1)?,
@@ -145,6 +149,28 @@ impl Database {
         })?;
 
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    /// Returns all config fields as a single row.
+    pub fn get_config(&self) -> Result<ConfigRow> {
+        let mut stmt = self.conn.prepare(
+            "SELECT version, exclude,
+                    epoch(last_indexed)::BIGINT,
+                    total_files, indexing, monitoring
+             FROM config LIMIT 1",
+        )?;
+        let mut rows = stmt.query([])?;
+        let row = rows
+            .next()?
+            .ok_or_else(|| anyhow::anyhow!("config table is empty"))?;
+        Ok(ConfigRow {
+            version: row.get(0)?,
+            exclude: row.get::<_, Option<String>>(1)?.unwrap_or_default(),
+            last_indexed_secs: row.get(2)?,
+            total_files: row.get::<_, Option<i64>>(3)?.unwrap_or(0),
+            indexing: row.get::<_, Option<bool>>(4)?.unwrap_or(false),
+            monitoring: row.get::<_, Option<bool>>(5)?.unwrap_or(false),
+        })
     }
 
     /// Returns the raw exclude lines stored in config (one path per line).
@@ -164,7 +190,9 @@ impl Database {
     }
 
     pub fn is_indexed(&self) -> Result<bool> {
-        let mut stmt = self.conn.prepare("SELECT indexed FROM config LIMIT 1")?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT last_indexed IS NOT NULL FROM config LIMIT 1")?;
         let mut rows = stmt.query([])?;
         Ok(rows
             .next()?
@@ -172,8 +200,45 @@ impl Database {
             .unwrap_or(false))
     }
 
-    pub fn mark_indexed(&self) -> Result<()> {
-        self.conn.execute("UPDATE config SET indexed = true", [])?;
+    pub fn mark_indexed(&self, total_files: usize) -> Result<()> {
+        self.conn.execute(
+            "UPDATE config SET last_indexed = NOW(), total_files = ?",
+            params![total_files as i64],
+        )?;
+        Ok(())
+    }
+
+    pub fn is_indexing(&self) -> Result<bool> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT indexing FROM config LIMIT 1")?;
+        let mut rows = stmt.query([])?;
+        Ok(rows
+            .next()?
+            .map(|row| row.get::<_, bool>(0).unwrap_or(false))
+            .unwrap_or(false))
+    }
+
+    pub fn set_indexing(&self, value: bool) -> Result<()> {
+        self.conn
+            .execute("UPDATE config SET indexing = ?", params![value])?;
+        Ok(())
+    }
+
+    pub fn is_monitoring(&self) -> Result<bool> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT monitoring FROM config LIMIT 1")?;
+        let mut rows = stmt.query([])?;
+        Ok(rows
+            .next()?
+            .map(|row| row.get::<_, bool>(0).unwrap_or(false))
+            .unwrap_or(false))
+    }
+
+    pub fn set_monitoring(&self, value: bool) -> Result<()> {
+        self.conn
+            .execute("UPDATE config SET monitoring = ?", params![value])?;
         Ok(())
     }
 }

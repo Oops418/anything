@@ -23,11 +23,13 @@ use tokio::net::UnixListener;
 use tokio::sync::Mutex as AsyncMutex;
 use tower::Service;
 
+use buffa_types::google::protobuf::EmptyView;
+
 use crate::{
     data_dir,
     db::Database,
     proto::store::v1::{
-        FileInfo, QueryRequestView, QueryResponse, StoreService,
+        ConfigResponse, FileInfo, QueryRequestView, QueryResponse, StoreService,
         StoreServiceClient as GeneratedStoreServiceClient, StoreServiceExt as _,
     },
     types::FileEntry,
@@ -138,6 +140,32 @@ impl StoreService for StoreServer {
         });
 
         Ok((response_stream, ctx))
+    }
+
+    async fn getconfig(
+        &self,
+        ctx: Context,
+        _req: OwnedView<EmptyView<'static>>,
+    ) -> Result<(ConfigResponse, Context), ConnectError> {
+        let db = self.db.lock().await;
+        let row = db.get_config().map_err(internal_error)?;
+        let response = ConfigResponse {
+            version: row.version,
+            exclude: row.exclude,
+            last_indexed: row
+                .last_indexed_secs
+                .map(|secs| buffa::MessageField::some(buffa_types::google::protobuf::Timestamp {
+                    seconds: secs,
+                    nanos: 0,
+                    ..Default::default()
+                }))
+                .unwrap_or_default(),
+            total_files: row.total_files,
+            indexing: row.indexing,
+            monitoring: row.monitoring,
+            ..Default::default()
+        };
+        Ok((response, ctx))
     }
 }
 

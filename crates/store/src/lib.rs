@@ -83,6 +83,7 @@ pub async fn start(monitored_paths: Vec<PathBuf>) -> Result<StoreClients> {
             // DuckDB's bulk CSV reader is orders of magnitude faster than
             // row-by-row appending, because it processes data in columnar batches.
 
+            db_guard.set_indexing(true)?;
             let csv_path = data_dir()?.join("files_staging.csv");
             let (tx, rx) = std::sync::mpsc::sync_channel::<types::FileEntry>(50_000);
 
@@ -128,7 +129,8 @@ pub async fn start(monitored_paths: Vec<PathBuf>) -> Result<StoreClients> {
                 );
                 let import_start = std::time::Instant::now();
                 db_guard.import_from_csv(&csv_path)?;
-                db_guard.mark_indexed()?;
+                db_guard.mark_indexed(count)?;
+                db_guard.set_indexing(false)?;
                 std::fs::remove_file(&csv_path).ok();
                 println!(
                     "[store] indexing complete — {} files in {:.2}s (scan+csv {:.2}s + import {:.2}s)",
