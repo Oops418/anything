@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import GeneratedStore
 
@@ -48,27 +49,36 @@ struct SidebarView: View {
             .padding(.top, 10)
 
             VStack(spacing: 4) {
-                Text("FileSearch")
+                Text("Anything")
                     .font(.system(size: 12, weight: .medium))
                     .foregroundColor(.white.opacity(0.8))
 
-                HStack(spacing: 4) {
-                    Circle()
-                        .fill(Color(red: 0.71, green: 0.65, blue: 1.0).opacity(0.95))
-                        .frame(width: 5, height: 5)
-                    Text(config.version.isEmpty ? "–" : config.version)
-                        .font(.system(size: 7.5, weight: .medium))
-                        .foregroundColor(Color(red: 0.78, green: 0.74, blue: 1.0).opacity(0.9))
-                        .kerning(0.5)
+                Button(action: {
+                    if let url = URL(string: "https://github.com/Oops418/anything-rs/releases") {
+                        NSWorkspace.shared.open(url)
+                    }
+                }) {
+                    HStack(spacing: 4) {
+                        Text("BETA")
+                            .font(.system(size: 6.5, weight: .bold))
+                            .foregroundColor(.white.opacity(0.9))
+                            .kerning(0.6)
+                        Text(config.version.isEmpty ? "–" : config.version)
+                            .font(.system(size: 7.5, weight: .medium))
+                            .foregroundColor(Color(red: 0.78, green: 0.74, blue: 1.0).opacity(0.9))
+                            .kerning(0.5)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(
+                        Capsule()
+                            .fill(Color(red: 0.43, green: 0.35, blue: 1.0).opacity(0.28))
+                            .overlay(Capsule().stroke(
+                                Color(red: 0.51, green: 0.43, blue: 1.0).opacity(0.4), lineWidth: 1))
+                    )
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
-                .background(
-                    Capsule()
-                        .fill(Color(red: 0.43, green: 0.35, blue: 1.0).opacity(0.28))
-                        .overlay(Capsule().stroke(
-                            Color(red: 0.51, green: 0.43, blue: 1.0).opacity(0.4), lineWidth: 1))
-                )
+                .buttonStyle(.plain)
+                .pointerCursor(.pointingHand)
             }
             .frame(maxWidth: .infinity)
         }
@@ -237,4 +247,16 @@ struct SidebarView: View {
         .environmentObject(StoreConfigService())
         .background(Color(red: 0.08, green: 0.08, blue: 0.15))
         .frame(height: 600)
+}
+
+private extension View {
+    func pointerCursor(_ cursor: NSCursor) -> some View {
+        onHover { isHovering in
+            if isHovering {
+                cursor.push()
+            } else {
+                NSCursor.pop()
+            }
+        }
+    }
 }
