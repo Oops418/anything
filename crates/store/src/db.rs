@@ -41,7 +41,8 @@ impl Database {
         self.conn.execute(
             "INSERT INTO config (version, exclude, last_indexed, total_files, indexing, monitoring)
              SELECT ?, '~/Library/Caches
-/Library/Caches', NULL, 0, false, false
+/Library/Caches
+/Volumes', NULL, 0, false, false
              WHERE NOT EXISTS (SELECT 1 FROM config LIMIT 1)",
             params![env!("CARGO_PKG_VERSION")],
         )?;
