@@ -130,7 +130,6 @@ pub async fn start(monitored_paths: Vec<PathBuf>) -> Result<StoreClients> {
                 let import_start = std::time::Instant::now();
                 db_guard.import_from_csv(&csv_path)?;
                 db_guard.mark_indexed(count)?;
-                db_guard.set_indexing(false)?;
                 std::fs::remove_file(&csv_path).ok();
                 println!(
                     "[store] indexing complete — {} files in {:.2}s (scan+csv {:.2}s + import {:.2}s)",
@@ -140,6 +139,7 @@ pub async fn start(monitored_paths: Vec<PathBuf>) -> Result<StoreClients> {
                     import_start.elapsed().as_secs_f64(),
                 );
             }
+            db_guard.set_indexing(false)?;
         }
     }
 

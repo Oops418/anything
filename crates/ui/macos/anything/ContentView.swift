@@ -1,7 +1,10 @@
 import SwiftUI
 import AppKit
+import GeneratedStore
 
 struct ContentView: View {
+    @StateObject private var configService = StoreConfigService()
+
     var body: some View {
         ZStack {
             GeometryReader { geo in
@@ -33,6 +36,7 @@ struct ContentView: View {
                 SearchPanelView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
+            .environmentObject(configService)
             .padding(.leading, 20)
             .padding(.trailing, 24)
             .padding(.vertical, 22)

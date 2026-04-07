@@ -1,6 +1,8 @@
 import SwiftUI
+import GeneratedStore
 
 struct SidebarView: View {
+    @EnvironmentObject private var config: StoreConfigService
     @State private var isHoveringAddPath = false
 
     var body: some View {
@@ -54,7 +56,7 @@ struct SidebarView: View {
                     Circle()
                         .fill(Color(red: 0.71, green: 0.65, blue: 1.0).opacity(0.95))
                         .frame(width: 5, height: 5)
-                    Text("BETA 0.4.1")
+                    Text(config.version.isEmpty ? "–" : config.version)
                         .font(.system(size: 7.5, weight: .medium))
                         .foregroundColor(Color(red: 0.78, green: 0.74, blue: 1.0).opacity(0.9))
                         .kerning(0.5)
@@ -78,19 +80,37 @@ struct SidebarView: View {
     private var indexStats: some View {
         VStack(alignment: .leading, spacing: 0) {
             sectionLabel("Index")
-            statRow("Total files",   "\(mockFiles.count)", accent: .white.opacity(0.8))
-            statRow("Last indexed",  "Just now")
-            statRow("Status",        "● Live",  accent: Color(red: 0.27, green: 0.86, blue: 0.43))
-            statRow("Avg query",     "~220 ms")
+
+            if config.indexing {
+                indexingInProgress
+            } else {
+                statRow("Total files",  formatFileCount(config.totalFiles), accent: .white.opacity(0.8))
+                statRow("Last indexed", formatLastIndexed(config.lastIndexed))
+                statRow(
+                    "Monitor",
+                    config.monitoring ? "● Watching" : "● Off",
+                    accent: config.monitoring
+                        ? Color(red: 0.27, green: 0.86, blue: 0.43)
+                        : .white.opacity(0.4)
+                )
+            }
         }
     }
 
-    // MARK: Excluded Paths
+    private var indexingInProgress: some View {
+        HStack(spacing: 8) {
+            ProgressView()
+                .progressViewStyle(.circular)
+                .controlSize(.mini)
+                .tint(.white.opacity(0.6))
+            Text("Indexing…")
+                .font(.system(size: 10))
+                .foregroundColor(.white.opacity(0.55))
+        }
+        .padding(.vertical, 6)
+    }
 
-    private let locationPaths = [
-        "~/Documents", "~/Desktop", "~/Projects",
-        "~/Pictures",  "~/Music",   "~/Movies", "~/Downloads"
-    ]
+    // MARK: Excluded Paths
 
     private var excludedPaths: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -102,18 +122,25 @@ struct SidebarView: View {
             }
             .padding(.bottom, 5)
 
-            ForEach(locationPaths, id: \.self) { path in
-                HStack(spacing: 6) {
-                    Image(systemName: "folder.badge.minus")
-                        .font(.system(size: 9, weight: .medium))
-                        .foregroundColor(.white.opacity(0.28))
-                        .frame(width: 11)
-                    Text(path)
-                        .font(.system(size: 9.5))
-                        .foregroundColor(.white.opacity(0.32))
-                        .lineLimit(1)
+            if config.excludePaths.isEmpty {
+                Text("None")
+                    .font(.system(size: 9.5))
+                    .foregroundColor(.white.opacity(0.22))
+                    .padding(.vertical, 2)
+            } else {
+                ForEach(config.excludePaths, id: \.self) { path in
+                    HStack(spacing: 6) {
+                        Image(systemName: "folder.badge.minus")
+                            .font(.system(size: 9, weight: .medium))
+                            .foregroundColor(.white.opacity(0.28))
+                            .frame(width: 11)
+                        Text(path)
+                            .font(.system(size: 9.5))
+                            .foregroundColor(.white.opacity(0.32))
+                            .lineLimit(1)
+                    }
+                    .padding(.vertical, 2)
                 }
-                .padding(.vertical, 2)
             }
         }
     }
@@ -141,10 +168,12 @@ struct SidebarView: View {
     // MARK: Re-index Button
 
     private var reindexButton: some View {
-        Button(action: {}) {
+        Button(action: {
+            Task { await config.refresh() }
+        }) {
             Text("↺  Re-index now")
                 .font(.system(size: 9.5))
-                .foregroundColor(.white.opacity(0.45))
+                .foregroundColor(.white.opacity(config.indexing ? 0.25 : 0.45))
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 6)
                 .background(
@@ -155,6 +184,7 @@ struct SidebarView: View {
                 )
         }
         .buttonStyle(.plain)
+        .disabled(config.indexing)
         .padding(.top, 8)
         .padding(.bottom, 4)
     }
@@ -189,10 +219,22 @@ struct SidebarView: View {
         }
         .padding(.vertical, 2)
     }
+
+    private func formatFileCount(_ count: Int64) -> String {
+        count == 0 ? "–" : count.formatted(.number)
+    }
+
+    private func formatLastIndexed(_ date: Date?) -> String {
+        guard let date else { return "Never" }
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return formatter.localizedString(for: date, relativeTo: Date())
+    }
 }
 
 #Preview {
     SidebarView()
+        .environmentObject(StoreConfigService())
         .background(Color(red: 0.08, green: 0.08, blue: 0.15))
         .frame(height: 600)
 }
