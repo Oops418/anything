@@ -42,7 +42,8 @@ impl Database {
             "INSERT INTO config (version, exclude, last_indexed, total_files, indexing, monitoring)
              SELECT ?, '~/Library/Caches
 /Library/Caches
-/Volumes', NULL, 0, false, false
+/Volumes
+/System/Volumes/Data', NULL, 0, false, false
              WHERE NOT EXISTS (SELECT 1 FROM config LIMIT 1)",
             params![env!("CARGO_PKG_VERSION")],
         )?;
