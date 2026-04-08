@@ -239,7 +239,7 @@ struct SearchPanelView: View {
                 Text("Start typing to query your files")
                     .font(.system(size: 12))
                     .foregroundColor(.white.opacity(0.5))
-                Text("Live ConnectRPC search over Unix socket")
+                Text("mode: default")
                     .font(.system(size: 10))
                     .foregroundColor(.white.opacity(0.25))
             }

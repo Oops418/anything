@@ -5,6 +5,7 @@ import GeneratedStore
 struct SidebarView: View {
     @EnvironmentObject private var config: StoreConfigService
     @State private var isHoveringAddPath = false
+    @State private var isHoveringTreemapButton = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -13,15 +14,14 @@ struct SidebarView: View {
             indexStats
             divider
             excludedPaths
-            Spacer(minLength: 24)
-            reindexButton
+            Spacer(minLength: 0)
+            bottomActions
         }
         .padding(.horizontal, 12)
-        .padding(.bottom, 16)
         .frame(width: 176)
         .frame(maxHeight: .infinity, alignment: .top)
         .padding(.top, 18)
-        .padding(.bottom, 10)
+        .padding(.bottom, 2)
     }
 
     // MARK: App Identity
@@ -54,7 +54,7 @@ struct SidebarView: View {
                     .foregroundColor(.white.opacity(0.8))
 
                 Button(action: {
-                    if let url = URL(string: "https://github.com/Oops418/anything-rs/releases") {
+                    if let url = URL(string: "https://github.com/Oops418/anything/releases") {
                         NSWorkspace.shared.open(url)
                     }
                 }) {
@@ -63,10 +63,12 @@ struct SidebarView: View {
                             .font(.system(size: 6.5, weight: .bold))
                             .foregroundColor(.white.opacity(0.9))
                             .kerning(0.6)
-                        Text(config.version.isEmpty ? "–" : config.version)
+                        Text(config.hasNewVersion ? "NEW VERSION" : (config.version.isEmpty ? "–" : config.version))
                             .font(.system(size: 7.5, weight: .medium))
                             .foregroundColor(Color(red: 0.78, green: 0.74, blue: 1.0).opacity(0.9))
                             .kerning(0.5)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
                     }
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
@@ -175,6 +177,61 @@ struct SidebarView: View {
         .onHover { isHoveringAddPath = $0 }
     }
 
+    // MARK: Bottom Actions
+
+    private var bottomActions: some View {
+        VStack(spacing: 8) {
+            treemapButton
+            reindexButton
+        }
+    }
+
+    private var treemapButton: some View {
+        Button(action: {}) {
+            ZStack {
+                Text("Treemap View")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundColor(Color(red: 0.78, green: 0.72, blue: 1.0).opacity(0.82))
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .center)
+
+                HStack(alignment: .center, spacing: 8) {
+                    TreemapGlyph()
+                        .frame(width: 13, height: 13, alignment: .center)
+
+                    Spacer(minLength: 0)
+
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 8, weight: .semibold))
+                        .foregroundColor(Color(red: 0.55, green: 0.36, blue: 0.96).opacity(0.6))
+                        .frame(height: 13, alignment: .center)
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 9)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color(red: 0.30, green: 0.18, blue: 0.55).opacity(isHoveringTreemapButton ? 0.26 : 0.18),
+                                Color(red: 0.20, green: 0.13, blue: 0.38).opacity(isHoveringTreemapButton ? 0.22 : 0.14)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(Color(red: 0.56, green: 0.40, blue: 0.96).opacity(isHoveringTreemapButton ? 0.30 : 0.18), lineWidth: 1)
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+        .pointerCursor(.pointingHand)
+        .onHover { isHoveringTreemapButton = $0 }
+    }
+
     // MARK: Re-index Button
 
     private var reindexButton: some View {
@@ -195,8 +252,6 @@ struct SidebarView: View {
         }
         .buttonStyle(.plain)
         .disabled(config.indexing)
-        .padding(.top, 8)
-        .padding(.bottom, 4)
     }
 
     // MARK: Helpers
@@ -239,6 +294,29 @@ struct SidebarView: View {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .abbreviated
         return formatter.localizedString(for: date, relativeTo: Date())
+    }
+}
+
+private struct TreemapGlyph: View {
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            Color.clear
+                .frame(width: 13, height: 13)
+
+            treemapBlock(width: 5.5, height: 8, x: 0, y: 0, opacity: 0.9)
+            treemapBlock(width: 6, height: 4.5, x: 7, y: 0, opacity: 0.7)
+            treemapBlock(width: 2.5, height: 7, x: 7, y: 6, opacity: 0.55)
+            treemapBlock(width: 2.5, height: 7, x: 10.5, y: 6, opacity: 0.45)
+            treemapBlock(width: 5.5, height: 3.5, x: 0, y: 9.5, opacity: 0.6)
+        }
+        .frame(width: 13, height: 13, alignment: .topLeading)
+    }
+
+    private func treemapBlock(width: CGFloat, height: CGFloat, x: CGFloat, y: CGFloat, opacity: Double) -> some View {
+        RoundedRectangle(cornerRadius: 1, style: .continuous)
+            .fill(Color(red: 0.55, green: 0.36, blue: 0.96).opacity(opacity))
+            .frame(width: width, height: height)
+            .offset(x: x, y: y)
     }
 }
 
