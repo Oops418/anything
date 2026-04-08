@@ -31,8 +31,9 @@ use crate::{
     proto::store::v1::{
         ConfigResponse, FileInfo, QueryRequestView, QueryResponse, StoreService,
         StoreServiceClient as GeneratedStoreServiceClient, StoreServiceExt as _,
+        TreemapNode, TreemapNodeType, TreemapRequestView, TreemapResponse,
     },
-    types::FileEntry,
+    types::{FileEntry, TreemapNodeData, TreemapNodeKind},
 };
 
 const CLIENT_BUFFER_SIZE: usize = 1024;
@@ -169,6 +170,26 @@ impl StoreService for StoreServer {
             monitoring: row.monitoring,
             ..Default::default()
         };
+        Ok((response, ctx))
+    }
+
+    async fn gettreemap(
+        &self,
+        ctx: Context,
+        req: OwnedView<TreemapRequestView<'static>>,
+    ) -> Result<(TreemapResponse, Context), ConnectError> {
+        let db = self.db.lock().await;
+
+        if db.is_indexing().unwrap_or(false) {
+            return Err(ConnectError::failed_precondition("indexing in progress"));
+        }
+
+        let root = db.get_treemap(req.root_path, req.depth).map_err(internal_error)?;
+        let response = TreemapResponse {
+            root: MessageField::some(treemap_node_to_proto(root)),
+            ..Default::default()
+        };
+
         Ok((response, ctx))
     }
 }
@@ -339,6 +360,27 @@ fn timestamp_from_unix_seconds(raw: &str) -> MessageField<Timestamp> {
             })
         })
         .unwrap_or_default()
+}
+
+fn treemap_node_to_proto(node: TreemapNodeData) -> TreemapNode {
+    let node_type = match node.kind {
+        TreemapNodeKind::File => TreemapNodeType::FILE,
+        TreemapNodeKind::Directory => TreemapNodeType::DIRECTORY,
+    };
+
+    TreemapNode {
+        path: node.path,
+        name: node.name,
+        r#type: node_type.into(),
+        size: node.size.try_into().unwrap_or(i64::MAX),
+        has_children: node.has_children,
+        children: node
+            .children
+            .into_iter()
+            .map(treemap_node_to_proto)
+            .collect(),
+        ..Default::default()
+    }
 }
 
 fn socket_authority() -> Result<Uri> {

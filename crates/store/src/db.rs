@@ -1,9 +1,10 @@
 use anyhow::Result;
 use duckdb::{Connection, params};
+use std::collections::BTreeMap;
 use std::path::Path;
 use std::path::PathBuf;
 
-use crate::types::{ConfigRow, FileEntry};
+use crate::types::{ConfigRow, FileEntry, TreemapNodeData, TreemapNodeKind};
 
 pub struct Database {
     conn: Connection,
@@ -242,5 +243,207 @@ impl Database {
         self.conn
             .execute("UPDATE config SET monitoring = ?", params![value])?;
         Ok(())
+    }
+
+    pub fn get_treemap(&self, root_path: &str, depth: u32) -> Result<TreemapNodeData> {
+        let normalized_root = normalize_treemap_root(root_path);
+        self.build_treemap_node(&normalized_root, depth.max(1))
+    }
+
+    fn build_treemap_node(&self, root_path: &str, depth: u32) -> Result<TreemapNodeData> {
+        let subtree_files = self.query_subtree_files(root_path)?;
+
+        if root_path != "/" {
+            if let Some((_, size)) = subtree_files.iter().find(|(path, _)| path == root_path) {
+                return Ok(TreemapNodeData {
+                    path: root_path.to_string(),
+                    name: treemap_node_name(root_path),
+                    kind: TreemapNodeKind::File,
+                    size: *size,
+                    has_children: false,
+                    children: Vec::new(),
+                });
+            }
+        }
+
+        let mut children = immediate_children_from_rows(root_path, &subtree_files);
+
+        if depth > 1 {
+            for child in &mut children {
+                if child.kind == TreemapNodeKind::Directory && child.has_children {
+                    *child = self.build_treemap_node(&child.path, depth - 1)?;
+                }
+            }
+        }
+
+        let total_size = children.iter().map(|child| child.size).sum();
+        let has_children = !children.is_empty();
+
+        Ok(TreemapNodeData {
+            path: root_path.to_string(),
+            name: treemap_node_name(root_path),
+            kind: TreemapNodeKind::Directory,
+            size: total_size,
+            has_children,
+            children,
+        })
+    }
+
+    fn query_subtree_files(&self, root_path: &str) -> Result<Vec<(String, u64)>> {
+        if root_path == "/" {
+            let mut stmt = self
+                .conn
+                .prepare("SELECT path, size FROM files ORDER BY path")?;
+            let rows = stmt.query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)? as u64))
+            })?;
+            return rows.collect::<Result<Vec<_>, _>>().map_err(Into::into);
+        }
+
+        let like = format!("{root_path}/%");
+        let mut stmt = self.conn.prepare(
+            "SELECT path, size
+             FROM files
+             WHERE path = ? OR path LIKE ?
+             ORDER BY path",
+        )?;
+        let rows = stmt.query_map(params![root_path, like.as_str()], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)? as u64))
+        })?;
+
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+}
+
+#[derive(Debug)]
+struct ChildAccumulator {
+    path: String,
+    name: String,
+    kind: TreemapNodeKind,
+    size: u64,
+    has_children: bool,
+}
+
+fn immediate_children_from_rows(
+    root_path: &str,
+    subtree_files: &[(String, u64)],
+) -> Vec<TreemapNodeData> {
+    let mut children = BTreeMap::<String, ChildAccumulator>::new();
+
+    for (path, size) in subtree_files {
+        let Some(relative_path) = relative_path(root_path, path) else {
+            continue;
+        };
+
+        let Some((first_component, remainder)) = split_first_component(relative_path) else {
+            continue;
+        };
+
+        if remainder.is_empty() {
+            if *size == 0 {
+                continue;
+            }
+
+            children.insert(
+                path.clone(),
+                ChildAccumulator {
+                    path: path.clone(),
+                    name: first_component.to_string(),
+                    kind: TreemapNodeKind::File,
+                    size: *size,
+                    has_children: false,
+                },
+            );
+            continue;
+        }
+
+        let child_path = join_treemap_path(root_path, first_component);
+        let entry = children.entry(child_path.clone()).or_insert_with(|| ChildAccumulator {
+            path: child_path.clone(),
+            name: first_component.to_string(),
+            kind: TreemapNodeKind::Directory,
+            size: 0,
+            has_children: true,
+        });
+        entry.size = entry.size.saturating_add(*size);
+        entry.has_children = true;
+    }
+
+    let mut nodes = children
+        .into_values()
+        .filter(|child| child.size > 0)
+        .map(|child| TreemapNodeData {
+            path: child.path,
+            name: child.name,
+            kind: child.kind,
+            size: child.size,
+            has_children: child.has_children,
+            children: Vec::new(),
+        })
+        .collect::<Vec<_>>();
+
+    nodes.sort_by(|lhs, rhs| rhs.size.cmp(&lhs.size).then_with(|| lhs.path.cmp(&rhs.path)));
+    nodes
+}
+
+fn normalize_treemap_root(root_path: &str) -> String {
+    let trimmed = root_path.trim();
+    if trimmed.is_empty() {
+        return "/".to_string();
+    }
+
+    let mut normalized = trimmed.to_string();
+    if !normalized.starts_with('/') {
+        normalized.insert(0, '/');
+    }
+
+    while normalized.len() > 1 && normalized.ends_with('/') {
+        normalized.pop();
+    }
+
+    if normalized.is_empty() {
+        "/".to_string()
+    } else {
+        normalized
+    }
+}
+
+fn relative_path<'a>(root_path: &str, file_path: &'a str) -> Option<&'a str> {
+    if root_path == "/" {
+        return file_path.strip_prefix('/');
+    }
+
+    let remainder = file_path.strip_prefix(root_path)?;
+    if remainder.is_empty() {
+        return None;
+    }
+
+    remainder.strip_prefix('/')
+}
+
+fn split_first_component(path: &str) -> Option<(&str, &str)> {
+    if path.is_empty() {
+        return None;
+    }
+
+    match path.split_once('/') {
+        Some((first, remainder)) => Some((first, remainder)),
+        None => Some((path, "")),
+    }
+}
+
+fn join_treemap_path(root_path: &str, child_name: &str) -> String {
+    if root_path == "/" {
+        format!("/{child_name}")
+    } else {
+        format!("{root_path}/{child_name}")
+    }
+}
+
+fn treemap_node_name(path: &str) -> String {
+    if path == "/" {
+        "/".to_string()
+    } else {
+        path.rsplit('/').next().unwrap_or(path).to_string()
     }
 }

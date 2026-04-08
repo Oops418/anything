@@ -19,3 +19,19 @@ pub struct ConfigRow {
     pub indexing: bool,
     pub monitoring: bool,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TreemapNodeKind {
+    File,
+    Directory,
+}
+
+#[derive(Debug, Clone)]
+pub struct TreemapNodeData {
+    pub path: String,
+    pub name: String,
+    pub kind: TreemapNodeKind,
+    pub size: u64,
+    pub has_children: bool,
+    pub children: Vec<TreemapNodeData>,
+}

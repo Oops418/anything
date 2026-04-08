@@ -4,7 +4,10 @@ pub mod scanner;
 pub mod service;
 pub mod types;
 
-pub use proto::store::v1::{FileInfo, MethodEnum, QueryRequest, QueryResponse};
+pub use proto::store::v1::{
+    FileInfo, MethodEnum, QueryRequest, QueryResponse, TreemapNode, TreemapNodeType,
+    TreemapRequest, TreemapResponse,
+};
 pub use service::{StoreClients, StoreServiceClient};
 
 use std::io::Write as _;

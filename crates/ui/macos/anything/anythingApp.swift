@@ -13,6 +13,12 @@ struct anythingApp: App {
         }
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 920, height: 620)
+
+        Window("Treemap", id: "treemap") {
+            TreemapWindowView()
+        }
+        .windowStyle(.hiddenTitleBar)
+        .defaultSize(width: 980, height: 680)
     }
 }
 

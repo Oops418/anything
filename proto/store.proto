@@ -7,6 +7,7 @@ import "google/protobuf/empty.proto";
 service StoreService {
   rpc querydb(QueryRequest) returns (stream QueryResponse);
   rpc getconfig(google.protobuf.Empty) returns (ConfigResponse);
+  rpc gettreemap(TreemapRequest) returns (TreemapResponse);
 }
 
 enum MethodEnum {
@@ -44,4 +45,28 @@ message ConfigResponse {
   int64 total_files = 4;
   bool indexing = 5;
   bool monitoring = 6;
+}
+
+enum TreemapNodeType {
+  TREEMAP_NODE_TYPE_UNSPECIFIED = 0;
+  FILE = 1;
+  DIRECTORY = 2;
+}
+
+message TreemapRequest {
+  string root_path = 1;
+  uint32 depth = 2;
+}
+
+message TreemapNode {
+  string path = 1;
+  string name = 2;
+  TreemapNodeType type = 3;
+  int64 size = 4;
+  bool has_children = 5;
+  repeated TreemapNode children = 6;
+}
+
+message TreemapResponse {
+  TreemapNode root = 1;
 }

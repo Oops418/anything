@@ -3,6 +3,7 @@ import SwiftUI
 import GeneratedStore
 
 struct SidebarView: View {
+    @Environment(\.openWindow) private var openWindow
     @EnvironmentObject private var config: StoreConfigService
     @State private var isHoveringAddPath = false
     @State private var isHoveringTreemapButton = false
@@ -187,7 +188,9 @@ struct SidebarView: View {
     }
 
     private var treemapButton: some View {
-        Button(action: {}) {
+        Button(action: {
+            openWindow(id: "treemap")
+        }) {
             ZStack {
                 Text("Treemap View")
                     .font(.system(size: 10, weight: .medium))
