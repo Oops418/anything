@@ -1,6 +1,5 @@
 import SwiftUI
 import AppKit
-@preconcurrency import QuickLookUI
 import GeneratedStore
 
 private let tableResizeAnimation = Animation.interactiveSpring(
@@ -51,55 +50,6 @@ private enum SearchPanelFocusArea {
     case results
 }
 
-@MainActor
-private final class PreviewCoordinator: NSObject, @preconcurrency QLPreviewPanelDataSource, QLPreviewPanelDelegate {
-    static let shared = PreviewCoordinator()
-
-    private var currentURL: URL?
-    private(set) var isVisible = false
-
-    func togglePreview(for file: FileItem) {
-        guard let previewURL = file.previewURL else {
-            NSSound.beep()
-            return
-        }
-
-        if isVisible, currentURL == previewURL {
-            dismissPreview()
-            return
-        }
-
-        currentURL = previewURL
-        presentPreview()
-    }
-
-    func dismissPreview() {
-        QLPreviewPanel.shared()?.orderOut(nil)
-        isVisible = false
-    }
-
-    func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int {
-        currentURL == nil ? 0 : 1
-    }
-
-    func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> QLPreviewItem! {
-        currentURL as NSURL?
-    }
-
-    func previewPanelWillClose(_ panel: QLPreviewPanel!) {
-        isVisible = false
-    }
-
-    private func presentPreview() {
-        guard let panel = QLPreviewPanel.shared() else { return }
-        panel.dataSource = self
-        panel.delegate = self
-        panel.reloadData()
-        panel.makeKeyAndOrderFront(nil)
-        isVisible = true
-    }
-}
-
 struct SearchPanelView: View {
     @State private var query      = ""
     @State private var results    = [FileItem]()
@@ -122,7 +72,7 @@ struct SearchPanelView: View {
         }
         .padding(14)
         .background(
-            SearchPanelKeyMonitor { event in
+            WindowKeyMonitor { event in
                 handleKeyDown(event)
             }
         )
@@ -448,7 +398,7 @@ struct SearchPanelView: View {
         searchTask?.cancel()
         query = ""; results = []; hasSearched = false; isLoading = false; selectedId = nil; errorMessage = nil
         activeArea = .search
-        PreviewCoordinator.shared.dismissPreview()
+        QuickPreviewCoordinator.shared.dismissPreview()
     }
 
     private func handleKeyDown(_ event: NSEvent) -> Bool {
@@ -457,12 +407,12 @@ struct SearchPanelView: View {
         switch event.keyCode {
         case 49:
             if let selectedFile {
-                PreviewCoordinator.shared.togglePreview(for: selectedFile)
+                QuickPreviewCoordinator.shared.togglePreview(for: selectedFile.previewURL)
                 return true
             }
         case 53:
-            if PreviewCoordinator.shared.isVisible {
-                PreviewCoordinator.shared.dismissPreview()
+            if QuickPreviewCoordinator.shared.isVisible {
+                QuickPreviewCoordinator.shared.dismissPreview()
                 return true
             }
         default:
@@ -488,52 +438,6 @@ struct SearchPanelView: View {
         activeArea = .results
         isSearchFieldFocused = false
         NSApp.keyWindow?.makeFirstResponder(nil)
-    }
-}
-
-private struct SearchPanelKeyMonitor: NSViewRepresentable {
-    let onKeyDown: (NSEvent) -> Bool
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(onKeyDown: onKeyDown)
-    }
-
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView()
-        context.coordinator.startMonitoring()
-        return view
-    }
-
-    func updateNSView(_ nsView: NSView, context: Context) {
-        context.coordinator.onKeyDown = onKeyDown
-    }
-
-    static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
-        coordinator.stopMonitoring()
-    }
-
-    final class Coordinator {
-        var onKeyDown: (NSEvent) -> Bool
-        private var monitor: Any?
-
-        init(onKeyDown: @escaping (NSEvent) -> Bool) {
-            self.onKeyDown = onKeyDown
-        }
-
-        func startMonitoring() {
-            guard monitor == nil else { return }
-            monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-                guard let self else { return event }
-                return self.onKeyDown(event) ? nil : event
-            }
-        }
-
-        func stopMonitoring() {
-            if let monitor {
-                NSEvent.removeMonitor(monitor)
-                self.monitor = nil
-            }
-        }
     }
 }
 

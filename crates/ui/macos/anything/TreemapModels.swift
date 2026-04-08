@@ -46,6 +46,7 @@ final class TreemapTreeStore: ObservableObject {
     @Published private(set) var root: TreemapNodeItem?
     @Published private(set) var isLoadingRoot = false
     @Published private(set) var errorMessage: String?
+    @Published private(set) var selectedPath: String?
 
     private let service: StoreTreemapService
     private var cachedChildrenByPath: [String: [TreemapNodeItem]] = [:]
@@ -59,6 +60,11 @@ final class TreemapTreeStore: ObservableObject {
         await reloadRoot()
     }
 
+    var selectedNode: TreemapNodeItem? {
+        guard let selectedPath else { return nil }
+        return node(at: selectedPath)
+    }
+
     func reloadRoot() async {
         isLoadingRoot = true
         errorMessage = nil
@@ -68,9 +74,11 @@ final class TreemapTreeStore: ObservableObject {
             var item = TreemapNodeItem(proto: rootNode)
             item.isExpanded = true
             root = item
+            selectedPath = nil
             cachedChildrenByPath = [item.path: item.children ?? []]
         } catch {
             root = nil
+            selectedPath = nil
             errorMessage = error.localizedDescription
         }
 
@@ -106,6 +114,11 @@ final class TreemapTreeStore: ObservableObject {
         Task {
             await loadChildren(for: path)
         }
+    }
+
+    func selectNode(at path: String) {
+        guard node(at: path) != nil else { return }
+        selectedPath = path
     }
 
     private func loadChildren(for path: String) async {

@@ -1,6 +1,8 @@
 import AppKit
 import SwiftUI
 
+private let treemapWindowIdentifier = NSUserInterfaceItemIdentifier("treemap-window")
+
 private enum TreemapMetrics {
     static let tileGap: CGFloat = 0
     static let minLabelWidth: CGFloat = 88
@@ -38,8 +40,7 @@ struct TreemapWindowView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(18)
-            .padding(12)
+            .padding(6)
         }
         .background(
             LinearGradient(
@@ -51,6 +52,11 @@ struct TreemapWindowView: View {
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
+        )
+        .background(
+            WindowKeyMonitor { event in
+                handleKeyDown(event)
+            }
         )
         .background(TreemapWindowConfigurator())
         .frame(minWidth: 860, minHeight: 620)
@@ -138,6 +144,35 @@ struct TreemapWindowView: View {
             .frame(width: size, height: size)
             .blur(radius: blur)
     }
+
+    private func handleKeyDown(_ event: NSEvent) -> Bool {
+        guard NSApp.keyWindow?.identifier == treemapWindowIdentifier else {
+            return false
+        }
+
+        switch event.keyCode {
+        case 49:
+            if let selectedNode = treeStore.selectedNode {
+                QuickPreviewCoordinator.shared.togglePreview(for: previewURL(for: selectedNode))
+                return true
+            }
+        case 53:
+            if QuickPreviewCoordinator.shared.isVisible {
+                QuickPreviewCoordinator.shared.dismissPreview()
+                return true
+            }
+        default:
+            break
+        }
+
+        return false
+    }
+
+    private func previewURL(for node: TreemapNodeItem) -> URL? {
+        let expandedPath = NSString(string: node.path).expandingTildeInPath
+        let url = URL(fileURLWithPath: expandedPath)
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
 }
 
 private struct TreemapLevelView: View {
@@ -180,6 +215,10 @@ private struct TreemapTileView: View {
 
     @State private var isHovering = false
 
+    private var isSelected: Bool {
+        treeStore.selectedPath == node.path
+    }
+
     private var canNestChildren: Bool {
         size.width >= TreemapMetrics.minNestedWidth && size.height >= TreemapMetrics.minNestedHeight
     }
@@ -199,12 +238,20 @@ private struct TreemapTileView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             }
 
+            selectionSurface
+
             if node.isDirectory {
                 directoryControls
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         .onHover { isHovering = $0 }
+        .contextMenu {
+            Button("Open in Folder") {
+                treeStore.selectNode(at: node.path)
+                revealInFinder()
+            }
+        }
     }
 
     private var cornerRadius: CGFloat {
@@ -242,7 +289,12 @@ private struct TreemapTileView: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(Color.white.opacity(isHovering ? 0.34 : 0.22), lineWidth: 1)
+                    .stroke(
+                        isSelected
+                            ? Color.white.opacity(0.84)
+                            : Color.white.opacity(isHovering ? 0.34 : 0.22),
+                        lineWidth: isSelected ? 2 : 1
+                    )
             )
             .background(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
@@ -270,8 +322,13 @@ private struct TreemapTileView: View {
                 .minimumScaleFactor(0.55)
                 .truncationMode(.tail)
                 .frame(maxWidth: .infinity)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    treeStore.selectNode(at: node.path)
+                }
 
             Button {
+                treeStore.selectNode(at: node.path)
                 treeStore.toggleDirectory(at: node.path)
             } label: {
                 Image(systemName: "minus")
@@ -314,11 +371,21 @@ private struct TreemapTileView: View {
     }
 
     @ViewBuilder
+    private var selectionSurface: some View {
+        if !showsExpandedTreemap {
+            Color.clear
+                .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                .onTapGesture {
+                    handlePrimaryAction()
+                }
+        }
+    }
+
+    @ViewBuilder
     private var directoryControls: some View {
-        if showsExpandedTreemap {
-            EmptyView()
-        } else if node.isExpanded {
+        if node.isExpanded && !showsExpandedTreemap {
             Button {
+                treeStore.selectNode(at: node.path)
                 treeStore.toggleDirectory(at: node.path)
             } label: {
                 Image(systemName: "minus")
@@ -337,13 +404,26 @@ private struct TreemapTileView: View {
             .buttonStyle(.plain)
             .padding(10)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-        } else {
-            Color.clear
-                .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-                .onTapGesture {
-                    treeStore.toggleDirectory(at: node.path)
-                }
         }
+    }
+
+    private func handlePrimaryAction() {
+        treeStore.selectNode(at: node.path)
+
+        if node.isDirectory && !node.isExpanded {
+            treeStore.toggleDirectory(at: node.path)
+        }
+    }
+
+    private func revealInFinder() {
+        let expandedPath = NSString(string: node.path).expandingTildeInPath
+        let url = URL(fileURLWithPath: expandedPath)
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            NSSound.beep()
+            return
+        }
+
+        NSWorkspace.shared.activateFileViewerSelecting([url])
     }
 
     private func tileColor(for node: TreemapNodeItem, depth: Int) -> Color {
@@ -509,6 +589,7 @@ private struct TreemapWindowConfigurator: NSViewRepresentable {
         let view = NSView()
         DispatchQueue.main.async {
             guard let window = view.window else { return }
+            window.identifier = treemapWindowIdentifier
             window.isOpaque = false
             window.backgroundColor = .clear
             window.isMovableByWindowBackground = true
