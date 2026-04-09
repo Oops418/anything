@@ -51,6 +51,7 @@ private enum SearchPanelFocusArea {
 }
 
 struct SearchPanelView: View {
+    @EnvironmentObject private var config: StoreConfigService
     @State private var query      = ""
     @State private var results    = [FileItem]()
     @State private var hasSearched  = false
@@ -100,6 +101,11 @@ struct SearchPanelView: View {
         }
         .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
         .shadow(color: .black.opacity(0.38), radius: 44, y: 22)
+        .onChange(of: config.indexing) {
+            guard config.indexing else { return }
+            isSearchFieldFocused = false
+            NSApp.keyWindow?.makeFirstResponder(nil)
+        }
     }
 
     // MARK: Search Bar
@@ -110,7 +116,7 @@ struct SearchPanelView: View {
                 .font(.system(size: 12, weight: .medium))
                 .foregroundColor(.white.opacity(0.55))
 
-            TextField("Search files by name, extension, or path…", text: $query)
+            TextField("Search files by name", text: $query)
                 .textFieldStyle(.plain)
                 .font(.system(size: 12))
                 .foregroundColor(.white)
@@ -152,6 +158,8 @@ struct SearchPanelView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
+        .opacity(config.indexing ? 0.55 : 1)
+        .allowsHitTesting(!config.indexing)
         .overlay(alignment: .bottom) {
             Rectangle().fill(Color.white.opacity(0.10)).frame(height: 1)
         }
@@ -176,14 +184,7 @@ struct SearchPanelView: View {
 
     private var idleState: some View {
         VStack(spacing: 14) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 14)
-                    .fill(Color.white.opacity(0.08))
-                    .overlay(RoundedRectangle(cornerRadius: 14)
-                        .stroke(Color.white.opacity(0.16), lineWidth: 1))
-                Text("🔍").font(.system(size: 28))
-            }
-            .frame(width: 60, height: 60)
+            stateIcon(symbol: "doc.text.magnifyingglass", tint: Color(red: 0.42, green: 0.78, blue: 1.0))
 
             VStack(spacing: 4) {
                 Text("Start typing to query your files")
@@ -200,7 +201,7 @@ struct SearchPanelView: View {
 
     private func errorState(_ message: String) -> some View {
         VStack(spacing: 10) {
-            Text("⚠️").font(.system(size: 34))
+            stateIcon(symbol: "exclamationmark.triangle.fill", tint: Color(red: 1.0, green: 0.74, blue: 0.30))
             Text("Search request failed")
                 .font(.system(size: 11.5))
                 .foregroundColor(.white.opacity(0.72))
@@ -217,7 +218,7 @@ struct SearchPanelView: View {
 
     private var emptyState: some View {
         VStack(spacing: 10) {
-            Text("🪹").font(.system(size: 36))
+            stateIcon(symbol: "tray.fill", tint: Color(red: 0.70, green: 0.83, blue: 1.0))
             Text("No results for \"\(query)\"")
                 .font(.system(size: 11.5))
                 .foregroundColor(.white.opacity(0.45))
@@ -438,6 +439,31 @@ struct SearchPanelView: View {
         activeArea = .results
         isSearchFieldFocused = false
         NSApp.keyWindow?.makeFirstResponder(nil)
+    }
+
+    private func stateIcon(symbol: String, tint: Color) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            tint.opacity(0.22),
+                            Color.white.opacity(0.06)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(tint.opacity(0.30), lineWidth: 1)
+                )
+
+            Image(systemName: symbol)
+                .font(.system(size: 25, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.92))
+        }
+        .frame(width: 60, height: 60)
     }
 }
 

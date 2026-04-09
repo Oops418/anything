@@ -29,62 +29,12 @@ struct SidebarView: View {
 
     private var appIdentity: some View {
         VStack(alignment: .center, spacing: 8) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 14)
-                    .fill(LinearGradient(
-                        colors: [
-                            Color(red: 0.43, green: 0.35, blue: 1.0).opacity(0.55),
-                            Color(red: 0.20, green: 0.67, blue: 1.0).opacity(0.45)
-                        ],
-                        startPoint: .topLeading, endPoint: .bottomTrailing
-                    ))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14)
-                            .stroke(Color.white.opacity(0.22), lineWidth: 1)
-                    )
-                    .shadow(color: Color(red: 0.39, green: 0.31, blue: 1.0).opacity(0.35),
-                            radius: 10, y: 3)
-                Text("🔍").font(.system(size: 24))
-            }
-            .frame(width: 52, height: 52)
-            .padding(.top, 10)
-
-            VStack(spacing: 4) {
-                Text("Anything")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(.white.opacity(0.8))
-
-                Button(action: {
-                    if let url = URL(string: "https://github.com/Oops418/anything/releases") {
-                        NSWorkspace.shared.open(url)
-                    }
-                }) {
-                    HStack(spacing: 4) {
-                        Text("BETA")
-                            .font(.system(size: 6.5, weight: .bold))
-                            .foregroundColor(.white.opacity(0.9))
-                            .kerning(0.6)
-                        Text(config.hasNewVersion ? "NEW VERSION" : (config.version.isEmpty ? "–" : config.version))
-                            .font(.system(size: 7.5, weight: .medium))
-                            .foregroundColor(Color(red: 0.78, green: 0.74, blue: 1.0).opacity(0.9))
-                            .kerning(0.5)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(
-                        Capsule()
-                            .fill(Color(red: 0.43, green: 0.35, blue: 1.0).opacity(0.28))
-                            .overlay(Capsule().stroke(
-                                Color(red: 0.51, green: 0.43, blue: 1.0).opacity(0.4), lineWidth: 1))
-                    )
-                }
-                .buttonStyle(.plain)
-                .pointerCursor(.pointingHand)
-            }
-            .frame(maxWidth: .infinity)
+            Text("Anything")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(.white.opacity(0.8))
+                .frame(maxWidth: .infinity)
         }
+        .padding(.top, 12)
         .padding(.bottom, 12)
     }
 
@@ -183,8 +133,43 @@ struct SidebarView: View {
     private var bottomActions: some View {
         VStack(spacing: 8) {
             treemapButton
-            reindexButton
+            HStack(spacing: 8) {
+                versionButton
+                reindexButton
+            }
         }
+    }
+
+    private var versionButton: some View {
+        Button(action: {
+            if let url = URL(string: "https://github.com/Oops418/anything/releases") {
+                NSWorkspace.shared.open(url)
+            }
+        }) {
+            HStack(spacing: 3) {
+                Text("BETA")
+                    .font(.system(size: 6.5, weight: .bold))
+                    .foregroundColor(.white.opacity(0.88))
+                    .kerning(0.35)
+                Text(config.hasNewVersion ? "NEW" : (config.version.isEmpty ? "–" : config.version))
+                    .font(.system(size: 7.5, weight: .medium))
+                    .foregroundColor(Color(red: 0.78, green: 0.74, blue: 1.0).opacity(0.9))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color(red: 0.43, green: 0.35, blue: 1.0).opacity(0.18))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(Color(red: 0.51, green: 0.43, blue: 1.0).opacity(0.24), lineWidth: 1)
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+        .pointerCursor(.pointingHand)
     }
 
     private var treemapButton: some View {
@@ -231,8 +216,10 @@ struct SidebarView: View {
             )
         }
         .buttonStyle(.plain)
-        .pointerCursor(.pointingHand)
-        .onHover { isHoveringTreemapButton = $0 }
+        .opacity(config.indexing ? 0.5 : 1)
+        .disabled(config.indexing)
+        .pointerCursor(.pointingHand, enabled: !config.indexing)
+        .onHover { isHoveringTreemapButton = !config.indexing && $0 }
     }
 
     // MARK: Re-index Button
@@ -241,7 +228,7 @@ struct SidebarView: View {
         Button(action: {
             Task { await config.refresh() }
         }) {
-            Text("↺  Re-index now")
+            Text("Re-index")
                 .font(.system(size: 9.5))
                 .foregroundColor(.white.opacity(config.indexing ? 0.25 : 0.45))
                 .frame(maxWidth: .infinity)
@@ -255,6 +242,7 @@ struct SidebarView: View {
         }
         .buttonStyle(.plain)
         .disabled(config.indexing)
+        .pointerCursor(.pointingHand, enabled: !config.indexing)
     }
 
     // MARK: Helpers
@@ -331,8 +319,9 @@ private struct TreemapGlyph: View {
 }
 
 private extension View {
-    func pointerCursor(_ cursor: NSCursor) -> some View {
+    func pointerCursor(_ cursor: NSCursor, enabled: Bool = true) -> some View {
         onHover { isHovering in
+            guard enabled else { return }
             if isHovering {
                 cursor.push()
             } else {
