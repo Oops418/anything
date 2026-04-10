@@ -5,7 +5,7 @@ import SwiftProtobuf
 
 // MARK: - FileKind
 
-enum FileKind: String, CaseIterable, Identifiable {
+enum FileKind: String, CaseIterable, Identifiable, Sendable {
     case folder, image, doc, video, audio, code, archive, pdf
 
     var id: String { rawValue }
@@ -50,13 +50,13 @@ struct FileItem: Identifiable, Hashable {
     let sizeBytes: Int64?
     let modifiedAt: Date?
 
-    var displayName: String { ext.isEmpty ? name : "\(name).\(ext)" }
-    var sortName: String { displayName.localizedLowercase }
-    var sortPath: String { path.localizedLowercase }
-    var sortSizeBytes: Int64 { sizeBytes ?? -1 }
-    var sortModifiedAt: Date { modifiedAt ?? .distantPast }
+    nonisolated var displayName: String { ext.isEmpty ? name : "\(name).\(ext)" }
+    nonisolated var sortName: String { displayName.localizedLowercase }
+    nonisolated var sortPath: String { path.localizedLowercase }
+    nonisolated var sortSizeBytes: Int64 { sizeBytes ?? -1 }
+    nonisolated var sortModifiedAt: Date { modifiedAt ?? .distantPast }
 
-    init(
+    nonisolated init(
         id: String,
         name: String,
         ext: String,
@@ -102,20 +102,11 @@ struct FileItem: Identifiable, Hashable {
     }
 }
 
-extension FileItem {
-    /// Convenience single-item init — creates formatters each call.
-    /// Use ``init(proto:sizeFormatter:dateFormatter:)`` when converting many items at once.
-    init(proto file: Store_V1_FileInfo) {
-        self.init(
-            proto: file,
-            sizeFormatter: Self.makeSizeFormatter(),
-            dateFormatter: Self.makeDateFormatter()
-        )
-    }
+extension FileItem: Sendable {}
 
-    /// Batch init — pass pre-created formatters to amortise their initialisation cost
-    /// across all items in a search result set.
-    init(proto file: Store_V1_FileInfo, sizeFormatter: ByteCountFormatter, dateFormatter: DateFormatter) {
+extension FileItem {
+    /// Converts a protobuf result into the UI-friendly model.
+    nonisolated init(proto file: Store_V1_FileInfo) {
         let fullPath = NSString(string: file.path).expandingTildeInPath
         let fileURL = URL(fileURLWithPath: fullPath)
         let fileExtension = fileURL.pathExtension.lowercased()
@@ -128,42 +119,25 @@ extension FileItem {
             name: baseName.isEmpty ? file.name : baseName,
             ext: fileExtension,
             path: displayPath,
-            size: Self.formattedSize(file.size, using: sizeFormatter),
-            modified: Self.formattedModified(file, using: dateFormatter),
+            size: Self.formattedSize(file.size),
+            modified: Self.formattedModified(file),
             kind: .forFileExtension(fileExtension),
             sizeBytes: file.size,
             modifiedAt: Self.modifiedDate(file)
         )
     }
 
-    static func makeSizeFormatter() -> ByteCountFormatter {
-        let f = ByteCountFormatter()
-        f.allowedUnits = [.useBytes, .useKB, .useMB, .useGB, .useTB]
-        f.countStyle = .file
-        f.includesUnit = true
-        f.isAdaptive = true
-        return f
-    }
-
-    static func makeDateFormatter() -> DateFormatter {
-        let f = DateFormatter()
-        f.dateStyle = .medium
-        f.timeStyle = .short
-        f.doesRelativeDateFormatting = true
-        return f
-    }
-
-    private static func formattedSize(_ rawBytes: Int64, using formatter: ByteCountFormatter) -> String {
+    private static nonisolated func formattedSize(_ rawBytes: Int64) -> String {
         guard rawBytes > 0 else { return "—" }
-        return formatter.string(fromByteCount: rawBytes)
+        return rawBytes.formatted(.byteCount(style: .file))
     }
 
-    private static func formattedModified(_ file: Store_V1_FileInfo, using formatter: DateFormatter) -> String {
+    private static nonisolated func formattedModified(_ file: Store_V1_FileInfo) -> String {
         guard let date = modifiedDate(file) else { return "—" }
-        return formatter.string(from: date)
+        return date.formatted(date: .abbreviated, time: .shortened)
     }
 
-    private static func modifiedDate(_ file: Store_V1_FileInfo) -> Date? {
+    private static nonisolated func modifiedDate(_ file: Store_V1_FileInfo) -> Date? {
         guard file.hasModified else { return nil }
 
         let timestamp = file.modified
@@ -174,7 +148,7 @@ extension FileItem {
 }
 
 private extension FileKind {
-    static func forFileExtension(_ ext: String) -> Self {
+    static nonisolated func forFileExtension(_ ext: String) -> Self {
         switch ext.lowercased() {
         case "png", "jpg", "jpeg", "gif", "webp", "heic", "tiff", "svg":
             .image

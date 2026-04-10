@@ -370,8 +370,8 @@ struct SearchPanelView: View {
             results = []
             errorMessage = nil
 
-            // Fresh processor per search — owns its own formatters and accumulation state.
-            // Its methods hop to a background executor, never blocking the main actor.
+            // Fresh processor per search — owns its own accumulation state and sorts snapshots
+            // off the main actor before swapping the rendered array on the main actor.
             let processor = ChunkProcessor()
             let currentSortOrder = sortOrder
 
@@ -546,21 +546,17 @@ struct FileRowView: View {
 
 // MARK: - ChunkProcessor
 
-/// Background actor that owns a single pair of formatters and an accumulation buffer.
+/// Background actor that accumulates, sorts, and snapshots streamed search results.
 /// Called once per server chunk (≤ 256 files); transforms proto → FileItem, appends,
 /// sorts, and returns a value-copy snapshot for the main actor to display.
 private actor ChunkProcessor {
-    private let sizeFormatter = FileItem.makeSizeFormatter()
-    private let dateFormatter = FileItem.makeDateFormatter()
     private var accumulated: [FileItem] = []
 
     func process(
         chunk: Store_V1_QueryResponse,
         sortOrder: [KeyPathComparator<FileItem>]
     ) -> [FileItem] {
-        let newItems = chunk.files.map {
-            FileItem(proto: $0, sizeFormatter: sizeFormatter, dateFormatter: dateFormatter)
-        }
+        let newItems = chunk.files.map { FileItem(proto: $0) }
         accumulated.append(contentsOf: newItems)
         accumulated.sort(using: sortOrder)
         return accumulated   // COW copy — caller gets its own snapshot

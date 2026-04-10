@@ -3,12 +3,21 @@ import Foundation
 import SwiftUI
 import GeneratedStore
 
-enum TreemapNodeKind {
+enum TreemapNodeKind: Equatable, Sendable {
     case file
     case directory
+
+    nonisolated static func == (lhs: TreemapNodeKind, rhs: TreemapNodeKind) -> Bool {
+        switch (lhs, rhs) {
+        case (.file, .file), (.directory, .directory):
+            return true
+        default:
+            return false
+        }
+    }
 }
 
-struct TreemapNodeItem: Identifiable, Equatable {
+struct TreemapNodeItem: Identifiable, Equatable, Sendable {
     let path: String
     let name: String
     let kind: TreemapNodeKind
@@ -18,27 +27,29 @@ struct TreemapNodeItem: Identifiable, Equatable {
     var isExpanded: Bool = false
     var isLoadingChildren: Bool = false
 
-    var id: String { path }
-    var isDirectory: Bool { kind == .directory }
-    var displaySize: String { Self.sizeFormatter.string(fromByteCount: sizeBytes) }
+    nonisolated var id: String { path }
+    nonisolated var isDirectory: Bool { kind == .directory }
+    nonisolated var displaySize: String { sizeBytes.formatted(.byteCount(style: .file)) }
 
-    init(proto node: Store_V1_TreemapNode) {
+    nonisolated init(proto node: Store_V1_TreemapNode) {
         path = node.path
         name = node.name.isEmpty ? "/" : node.name
         kind = node.type == .directory ? .directory : .file
         sizeBytes = node.size
         hasChildren = node.hasChildren_p
-        children = node.children.isEmpty ? nil : node.children.map(TreemapNodeItem.init(proto:))
+        children = node.children.isEmpty ? nil : node.children.map { TreemapNodeItem(proto: $0) }
     }
 
-    private static let sizeFormatter: ByteCountFormatter = {
-        let formatter = ByteCountFormatter()
-        formatter.allowedUnits = [.useBytes, .useKB, .useMB, .useGB, .useTB]
-        formatter.countStyle = .file
-        formatter.includesUnit = true
-        formatter.isAdaptive = true
-        return formatter
-    }()
+    nonisolated static func == (lhs: TreemapNodeItem, rhs: TreemapNodeItem) -> Bool {
+        lhs.path == rhs.path &&
+        lhs.name == rhs.name &&
+        lhs.kind == rhs.kind &&
+        lhs.sizeBytes == rhs.sizeBytes &&
+        lhs.hasChildren == rhs.hasChildren &&
+        lhs.children == rhs.children &&
+        lhs.isExpanded == rhs.isExpanded &&
+        lhs.isLoadingChildren == rhs.isLoadingChildren
+    }
 }
 
 @MainActor
@@ -124,7 +135,7 @@ final class TreemapTreeStore: ObservableObject {
     private func loadChildren(for path: String) async {
         do {
             let subtree = try await service.fetch(rootPath: path, depth: 1)
-            let children = subtree.children.map(TreemapNodeItem.init(proto:))
+            let children = subtree.children.map { TreemapNodeItem(proto: $0) }
             cachedChildrenByPath[path] = children
 
             updateNode(at: path) { target in

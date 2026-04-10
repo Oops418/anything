@@ -82,6 +82,9 @@ final class BackendLauncher {
     /// or the timeout elapses.
     private func waitForReadySignal(pipe: Pipe, process p: Process) async throws {
         let handle = pipe.fileHandleForReading
+        let logger = log
+        let readySignal = Self.readySignal
+        let startupTimeout = Self.startupTimeout
         let waitQueue = DispatchQueue(label: "anything.backend.ready", qos: .userInitiated)
         let result = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<ReadyWaitResult, Error>) in
             let readSource = DispatchSource.makeReadSource(fileDescriptor: handle.fileDescriptor, queue: waitQueue)
@@ -102,8 +105,8 @@ final class BackendLauncher {
                 while let newlineRange = bufferedText.rangeOfCharacter(from: .newlines) {
                     let line = String(bufferedText[..<newlineRange.lowerBound])
                     bufferedText.removeSubrange(..<newlineRange.upperBound)
-                    log.debug("[backend] \(line)")
-                    if line.contains(Self.readySignal) {
+                    logger.debug("[backend] \(line)")
+                    if line.contains(readySignal) {
                         finish(.success(.ready))
                         return
                     }
@@ -117,7 +120,7 @@ final class BackendLauncher {
                 consumeBufferedLines()
             }
 
-            timeoutSource.schedule(deadline: .now() + Self.startupTimeout)
+            timeoutSource.schedule(deadline: .now() + startupTimeout)
             timeoutSource.setEventHandler {
                 finish(.success(.timedOut))
             }
@@ -136,7 +139,7 @@ final class BackendLauncher {
         case .ready:
             return
         case .timedOut:
-            log.warning("Backend did not emit ready signal within \(Self.startupTimeout)s — proceeding anyway")
+            log.warning("Backend did not emit ready signal within \(startupTimeout)s — proceeding anyway")
         case .exited(let code):
             throw LaunchError.processExited(code)
         }
