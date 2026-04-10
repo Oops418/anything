@@ -28,7 +28,7 @@ final class BackendLauncher {
 
     /// Synchronously starts the backend and blocks until it signals readiness or the
     /// timeout elapses. Throws if the binary cannot be found or the process exits early.
-    func launchAndWait() throws {
+    func launchAndWait() async throws {
         let binaryURL = try resolvedBinaryURL()
         log.info("Launching backend: \(binaryURL.path)")
 
@@ -44,7 +44,7 @@ final class BackendLauncher {
         try p.run()
         self.process = p
 
-        try waitForReadySignal(pipe: outPipe, process: p)
+        try await waitForReadySignal(pipe: outPipe, process: p)
         log.info("Backend is ready (pid \(p.processIdentifier))")
     }
 
@@ -80,44 +80,76 @@ final class BackendLauncher {
 
     /// Reads stdout line-by-line until the ready signal appears, the process dies,
     /// or the timeout elapses.
-    private func waitForReadySignal(pipe: Pipe, process p: Process) throws {
-        let deadline = Date(timeIntervalSinceNow: Self.startupTimeout)
+    private func waitForReadySignal(pipe: Pipe, process p: Process) async throws {
         let handle = pipe.fileHandleForReading
+        let waitQueue = DispatchQueue(label: "anything.backend.ready", qos: .userInitiated)
+        let result = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<ReadyWaitResult, Error>) in
+            let readSource = DispatchSource.makeReadSource(fileDescriptor: handle.fileDescriptor, queue: waitQueue)
+            let timeoutSource = DispatchSource.makeTimerSource(queue: waitQueue)
+            var bufferedText = ""
+            var finished = false
 
-        // Use a semaphore so the main thread blocks without spinning.
-        let sem = DispatchSemaphore(value: 0)
-        var readError: Error?
+            func finish(_ result: Result<ReadyWaitResult, Error>) {
+                guard !finished else { return }
+                finished = true
+                p.terminationHandler = nil
+                readSource.cancel()
+                timeoutSource.cancel()
+                continuation.resume(with: result)
+            }
 
-        handle.readabilityHandler = { fh in
-            let data = fh.availableData
-            guard !data.isEmpty else { return }
-            let text = String(decoding: data, as: UTF8.self)
-            for line in text.components(separatedBy: .newlines) {
-                log.debug("[backend] \(line)")
-                if line.contains(Self.readySignal) {
-                    fh.readabilityHandler = nil
-                    sem.signal()
-                    return
+            func consumeBufferedLines() {
+                while let newlineRange = bufferedText.rangeOfCharacter(from: .newlines) {
+                    let line = String(bufferedText[..<newlineRange.lowerBound])
+                    bufferedText.removeSubrange(..<newlineRange.upperBound)
+                    log.debug("[backend] \(line)")
+                    if line.contains(Self.readySignal) {
+                        finish(.success(.ready))
+                        return
+                    }
                 }
             }
+
+            readSource.setEventHandler {
+                let data = handle.availableData
+                guard !data.isEmpty else { return }
+                bufferedText += String(decoding: data, as: UTF8.self)
+                consumeBufferedLines()
+            }
+
+            timeoutSource.schedule(deadline: .now() + Self.startupTimeout)
+            timeoutSource.setEventHandler {
+                finish(.success(.timedOut))
+            }
+
+            p.terminationHandler = { process in
+                waitQueue.async {
+                    finish(.success(.exited(process.terminationStatus)))
+                }
+            }
+
+            readSource.resume()
+            timeoutSource.resume()
         }
 
-        let remaining = deadline.timeIntervalSinceNow
-        let result = sem.wait(timeout: .now() + max(remaining, 0))
-        handle.readabilityHandler = nil
-
-        // If the process exited before signalling ready, surface the exit code.
-        if !p.isRunning {
-            throw LaunchError.processExited(p.terminationStatus)
-        }
-        if case .timedOut = result {
+        switch result {
+        case .ready:
+            return
+        case .timedOut:
             log.warning("Backend did not emit ready signal within \(Self.startupTimeout)s — proceeding anyway")
+        case .exited(let code):
+            throw LaunchError.processExited(code)
         }
-        if let e = readError { throw e }
     }
 }
 
 // MARK: - Errors
+
+private enum ReadyWaitResult {
+    case ready
+    case timedOut
+    case exited(Int32)
+}
 
 enum LaunchError: LocalizedError {
     case bundleNotFound

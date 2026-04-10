@@ -1,15 +1,17 @@
 import SwiftUI
 import OSLog
+import Combine
 
 private let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "anything", category: "App")
 
 @main
 struct anythingApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    @StateObject private var launchController = LaunchController()
 
     var body: some Scene {
         WindowGroup {
-            RootView(state: appDelegate.launchState)
+            RootView(controller: launchController)
         }
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 920, height: 620)
@@ -25,15 +27,38 @@ struct anythingApp: App {
 // MARK: - Root gating view
 
 private struct RootView: View {
-    let state: LaunchState
+    @ObservedObject var controller: LaunchController
 
     var body: some View {
-        switch state {
-        case .ready:
-            ContentView()
-        case .failed(let error):
-            BackendErrorView(message: error)
+        Group {
+            switch controller.state {
+            case .launching:
+                BackendLoadingView()
+            case .ready:
+                ContentView()
+            case .failed(let error):
+                BackendErrorView(message: error)
+            }
         }
+        .task {
+            controller.startIfNeeded()
+        }
+    }
+}
+
+private struct BackendLoadingView: View {
+    var body: some View {
+        VStack(spacing: 16) {
+            ProgressView()
+                .controlSize(.regular)
+            Text("Starting backend...")
+                .font(.headline)
+            Text("Preparing the local search service.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .frame(width: 400, height: 260)
+        .padding()
     }
 }
 
@@ -60,27 +85,40 @@ private struct BackendErrorView: View {
     }
 }
 
-// MARK: - App delegate (runs before SwiftUI scene lifecycle)
+// MARK: - Launch state
 
 enum LaunchState {
+    case launching
     case ready
     case failed(String)
 }
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
-    /// Set synchronously in `applicationWillFinishLaunching` — SwiftUI reads it
-    /// only after the delegate phase completes, so the UI always sees a final value.
-    private(set) var launchState: LaunchState = .ready
+@MainActor
+final class LaunchController: ObservableObject {
+    @Published private(set) var state: LaunchState = .launching
+    private var didStart = false
 
-    func applicationWillFinishLaunching(_ notification: Notification) {
-        do {
-            try BackendLauncher.shared.launchAndWait()
-        } catch {
-            log.error("Backend launch failed: \(error.localizedDescription)")
-            launchState = .failed(error.localizedDescription)
+    func startIfNeeded() {
+        guard !didStart else { return }
+        didStart = true
+
+        Task(priority: .userInitiated) {
+            do {
+                try await BackendLauncher.shared.launchAndWait()
+                await MainActor.run {
+                    self.state = .ready
+                }
+            } catch {
+                log.error("Backend launch failed: \(error.localizedDescription)")
+                await MainActor.run {
+                    self.state = .failed(error.localizedDescription)
+                }
+            }
         }
     }
+}
 
+final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         BackendLauncher.shared.terminate()
     }
