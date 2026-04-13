@@ -5,6 +5,8 @@ private let treemapWindowIdentifier = NSUserInterfaceItemIdentifier("treemap-win
 
 private enum TreemapMetrics {
     static let tileGap: CGFloat = 0
+    static let minRenderableTileWidth: CGFloat = 15
+    static let minRenderableTileHeight: CGFloat = 15
     static let minLabelWidth: CGFloat = 88
     static let minLabelHeight: CGFloat = 54
     static let minNestedWidth: CGFloat = 92
@@ -184,14 +186,18 @@ private struct TreemapLevelView: View {
         GeometryReader { geometry in
             let layoutItems = SquarifiedTreemapLayout.layout(
                 nodes: nodes,
-                in: CGRect(origin: .zero, size: geometry.size)
+                in: CGRect(origin: .zero, size: geometry.size),
+                minimumTileSize: CGSize(
+                    width: TreemapMetrics.minRenderableTileWidth,
+                    height: TreemapMetrics.minRenderableTileHeight
+                )
             )
 
             ZStack(alignment: .topLeading) {
                 ForEach(layoutItems) { item in
                     let rect = item.rect.insetBy(dx: TreemapMetrics.tileGap / 2, dy: TreemapMetrics.tileGap / 2)
 
-                    if rect.width > 1, rect.height > 1 {
+                    if rect.width > 0, rect.height > 0 {
                         TreemapTileView(
                             node: item.node,
                             depth: depth,
@@ -359,13 +365,21 @@ private struct TreemapTileView: View {
     }
 
     private var centeredTileLabel: some View {
-        Text("\(node.name)  \(node.displaySize)")
-            .font(.system(size: 11, weight: .semibold, design: .rounded))
-            .foregroundColor(.white.opacity(0.92))
-            .lineLimit(1)
-            .minimumScaleFactor(0.42)
-            .truncationMode(.tail)
-            .multilineTextAlignment(.center)
+        VStack(spacing: 2) {
+            Text(node.name)
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundColor(.white.opacity(0.92))
+                .lineLimit(1)
+                .minimumScaleFactor(0.42)
+                .truncationMode(.tail)
+
+            Text(node.displaySize)
+                .font(.system(size: 10, weight: .medium, design: .rounded))
+                .foregroundColor(.white.opacity(0.70))
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+        }
+        .multilineTextAlignment(.center)
             .padding(.horizontal, 6)
             .padding(.vertical, 4)
     }
@@ -453,24 +467,58 @@ private struct TreemapLayoutItem: Identifiable {
 }
 
 private enum SquarifiedTreemapLayout {
-    static func layout(nodes: [TreemapNodeItem], in rect: CGRect) -> [TreemapLayoutItem] {
+    static func layout(
+        nodes: [TreemapNodeItem],
+        in rect: CGRect,
+        minimumTileSize: CGSize
+    ) -> [TreemapLayoutItem] {
         let filteredNodes = nodes.filter { $0.sizeBytes > 0 }
         guard !filteredNodes.isEmpty, rect.width > 0, rect.height > 0 else {
             return []
         }
 
-        let sortedNodes = filteredNodes.sorted {
+        var survivingNodes = sortedNodes(filteredNodes)
+        var previousCount = survivingNodes.count + 1
+
+        while !survivingNodes.isEmpty, survivingNodes.count < previousCount {
+            previousCount = survivingNodes.count
+
+            let layoutItems = computeLayout(nodes: survivingNodes, in: rect)
+            let nextNodes = layoutItems
+                .filter {
+                    $0.rect.width >= minimumTileSize.width &&
+                    $0.rect.height >= minimumTileSize.height
+                }
+                .map(\.node)
+
+            if nextNodes.count == survivingNodes.count {
+                return layoutItems
+            }
+
+            survivingNodes = sortedNodes(nextNodes)
+        }
+
+        return []
+    }
+
+    private static func sortedNodes(_ nodes: [TreemapNodeItem]) -> [TreemapNodeItem] {
+        nodes.sorted {
             if $0.sizeBytes == $1.sizeBytes {
                 return $0.path < $1.path
             }
             return $0.sizeBytes > $1.sizeBytes
         }
+    }
 
-        let totalWeight = Double(sortedNodes.reduce(Int64(0)) { $0 + $1.sizeBytes })
+    private static func computeLayout(
+        nodes: [TreemapNodeItem],
+        in rect: CGRect
+    ) -> [TreemapLayoutItem] {
+        let totalWeight = Double(nodes.reduce(Int64(0)) { $0 + $1.sizeBytes })
         guard totalWeight > 0 else { return [] }
 
         let totalArea = rect.width * rect.height
-        var remaining = sortedNodes.map { node in
+        var remaining = nodes.map { node in
             (node: node, area: CGFloat(Double(node.sizeBytes) / totalWeight) * totalArea)
         }
         var remainingRect = rect
